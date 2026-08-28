@@ -124,18 +124,18 @@ out of its way to avoid.
 
 `eas-update-branch` decides what the published update is called.
 
-- **`auto`** (default) passes `--auto`, which reads the name out of git. A
-  `pull_request` checkout is a detached HEAD, so this puts every PR in the repo
-  on one EAS branch literally named `HEAD`. That is survivable where the QR code
-  the workflow comments is the only way anyone opens a preview: a QR points at
-  one update group whatever its branch is called.
-- **`pr-branch`** names the update after the PR's head ref with the slashes
+- **`pr-branch`** (default) names the update after the PR's head ref with the slashes
   replaced (`agent/issue-1-x` → `agent-issue-1-x`), and gives it the PR title as
   its message. Use it when the name is also a handle — in
   `shared-branch-backend` mode it is what the branch's Convex deployment is
   called, so one name finds a PR's bundle and its backend in both dashboards,
   and the dev client's extensions panel lists one entry per PR instead of one
   entry called `HEAD`.
+- **`auto`** passes `--auto`, which reads the name out of git. A `pull_request`
+  checkout is a detached HEAD, so this puts every PR in the repo on one EAS
+  branch literally named `HEAD` — never what you want, kept only as an escape
+  hatch back to the historical behavior. (A QR still works either way: it points
+  at one update group whatever its branch is called.)
 
 ## Secrets the caller must hold
 

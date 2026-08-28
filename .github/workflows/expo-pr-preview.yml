@@ -71,9 +71,12 @@ on:
           slashes replaced, which is what a repo needs when the name is also a
           handle: in shared-branch-backend mode it is the name the branch's
           Convex deployment carries, so one name finds a PR's bundle and its
-          backend in both dashboards.
+          backend in both dashboards. `pr-branch` is the default because this
+          workflow only ever runs on pull_request events, where `auto` can
+          produce nothing but "HEAD"; `auto` remains only as an escape hatch
+          back to the historical behavior.
         type: string
-        default: auto
+        default: pr-branch
 
 jobs:
   # One job on purpose. The path filter used to be a job of its own, which meant
