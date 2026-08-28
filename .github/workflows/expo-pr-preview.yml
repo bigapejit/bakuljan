@@ -59,6 +59,21 @@ on:
         description: "Platform passed to eas update."
         type: string
         default: ios
+      eas-update-branch:
+        description: >-
+          How the published update is named. `auto` passes --auto, which reads
+          the name out of git — and a pull_request checkout is a detached HEAD,
+          so every PR in the repo lands on one EAS branch literally named "HEAD"
+          (visible in any --auto run's JSON output). That is survivable where the
+          QR code this workflow comments is the only way anyone opens a preview,
+          because a QR points at one update group regardless of its branch.
+          `pr-branch` names the update after the PR's head ref instead, with the
+          slashes replaced, which is what a repo needs when the name is also a
+          handle: in shared-branch-backend mode it is the name the branch's
+          Convex deployment carries, so one name finds a PR's bundle and its
+          backend in both dashboards.
+        type: string
+        default: auto
 
 jobs:
   # One job on purpose. The path filter used to be a job of its own, which meant
@@ -406,13 +421,57 @@ jobs:
         run: |
           echo "::warning::This PR needs a Convex preview backend, but the CONVEX_PREVIEW_DEPLOY_KEY secret is not set, so the preview runs against the shared dev deployment and will not include this branch's backend changes. Add a Convex Preview deploy key (Convex dashboard -> project Settings -> Deploy keys -> Generate a Preview deploy key) as a repository secret named CONVEX_PREVIEW_DEPLOY_KEY."
 
+      # Skipped entirely in `auto` mode, where a skipped step's outputs read as
+      # empty and the publish steps below fall back to --auto unchanged.
+      #
+      # Both values are built here from the event payload read as environment
+      # variables rather than interpolated straight into the command below: a PR
+      # title is attacker-controlled text on a fork PR, and `${{ }}` pastes it
+      # into the argument string verbatim. Quotes and backslashes come out, so
+      # what reaches `command:` can only end the argument it belongs to.
+      - name: Resolve the EAS update branch
+        id: update-branch
+        if: steps.scope.outputs.publish == 'true' && inputs.eas-update-branch != 'auto'
+        env:
+          NAMING: ${{ inputs.eas-update-branch }}
+          PREVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "$NAMING" != "pr-branch" ]; then
+            echo "eas-update-branch must be auto or pr-branch, got: '$NAMING'" >&2
+            exit 1
+          fi
+
+          # A quote or a backslash would let either value close the argument it
+          # sits in; a newline would let a title forge a second step output. The
+          # backslash goes through a variable because `${v//\\/}` does not
+          # actually match one.
+          backslash='\'
+          strip() {
+            local s="${1//\"/}"
+            s="${s//"$backslash"/}"
+            s="${s//$'\n'/ }"
+            printf '%s' "${s//$'\r'/ }"
+          }
+
+          # Slashes out: an EAS update branch is a flat name, so agent/issue-1-x
+          # becomes agent-issue-1-x, near enough to the Convex deployment's name
+          # to read as the same handle in both dashboards.
+          name="$(strip "${PREVIEW_BRANCH//\//-}")"
+          message="PR #${PR_NUMBER}: $(strip "${PR_TITLE:0:120}")"
+
+          printf 'flags=--branch "%s" --message "%s"\n' "$name" "$message" >> "$GITHUB_OUTPUT"
+
       # The convex-preview path publishes WITHOUT --environment, and that is the
       # whole trick. eas update merges the EAS-hosted environment's variables
       # over the process environment (eas-cli spreads them last, so the server
       # value wins), which would quietly put the shared dev URL back into a
       # bundle we just pointed at a per-PR backend. Omitting the flag makes
-      # eas update use the process environment alone; --auto is what keeps that
-      # legal on SDK 55, where the flag is otherwise prompted for.
+      # eas update use the process environment alone. Either naming supplies the
+      # branch and message the CLI would otherwise prompt for: --auto, or the
+      # --branch/--message pair the step above resolves.
       #
       # The cost: this bundle gets only the EXPO_PUBLIC_* values set on the job
       # above, so the EAS environment's extras are missing — a portal base URL
@@ -423,10 +482,10 @@ jobs:
         if: steps.scope.outputs.publish == 'true' && steps.convex-preview.outputs.url != ''
         uses: expo/expo-github-action/preview@v8
         with:
-          command: eas update --auto --platform ${{ inputs.eas-platform }} --non-interactive
+          command: eas update ${{ steps.update-branch.outputs.flags || '--auto' }} --platform ${{ inputs.eas-platform }} --non-interactive
 
       - name: Create PR preview
         if: steps.scope.outputs.publish == 'true' && steps.convex-preview.outputs.url == ''
         uses: expo/expo-github-action/preview@v8
         with:
-          command: eas update --auto --platform ${{ inputs.eas-platform }} --environment ${{ inputs.eas-environment }} --non-interactive
+          command: eas update ${{ steps.update-branch.outputs.flags || '--auto' }} --platform ${{ inputs.eas-platform }} --environment ${{ inputs.eas-environment }} --non-interactive

@@ -120,6 +120,23 @@ them and does not key its cache on them, so a warm cache would hand the PR a
 bundle pointing at the shared dev backend — the exact swap the publish step goes
 out of its way to avoid.
 
+## Naming the EAS update
+
+`eas-update-branch` decides what the published update is called.
+
+- **`auto`** (default) passes `--auto`, which reads the name out of git. A
+  `pull_request` checkout is a detached HEAD, so this puts every PR in the repo
+  on one EAS branch literally named `HEAD`. That is survivable where the QR code
+  the workflow comments is the only way anyone opens a preview: a QR points at
+  one update group whatever its branch is called.
+- **`pr-branch`** names the update after the PR's head ref with the slashes
+  replaced (`agent/issue-1-x` → `agent-issue-1-x`), and gives it the PR title as
+  its message. Use it when the name is also a handle — in
+  `shared-branch-backend` mode it is what the branch's Convex deployment is
+  called, so one name finds a PR's bundle and its backend in both dashboards,
+  and the dev client's extensions panel lists one entry per PR instead of one
+  entry called `HEAD`.
+
 ## Secrets the caller must hold
 
 | Secret | Needed by | Without it |
@@ -132,6 +149,17 @@ out of its way to avoid.
 
 The `EXPO_PUBLIC_*` values may be repository *variables* instead of secrets; the
 kit reads `secrets.X || vars.X`.
+
+Three more `EXPO_PUBLIC_*` names are optional, forwarded into the bundle by the
+preview and review-main workflows only when the caller repo actually holds a
+value: `EXPO_PUBLIC_CONVEX_SITE_URL` (for an app that does not derive the
+`.convex.site` twin itself — in either Convex preview mode the workflow
+overwrites it with the preview deployment's own twin), `EXPO_PUBLIC_POSTHOG_API_KEY`
+and `EXPO_PUBLIC_POSTHOG_HOST`. Only-when-set is deliberate: an `EXPO_PUBLIC_*`
+variable set to the empty string is not the same as an unset one, because Metro
+inlines whatever is there. Extending the list means adding the name in two
+places in each workflow — a secret whose name is only known at run time cannot
+be read.
 
 **`AGENT_PAT` is load-bearing, not a nicety.** GitHub suppresses workflow
 triggers for events raised by the default `GITHUB_TOKEN`. So the PAT is what lets
