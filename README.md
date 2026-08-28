@@ -1,4 +1,11 @@
-# bakuljan
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/bakuljan-logo-dark.svg">
+    <img alt="bakuljan" src="docs/assets/bakuljan-logo.svg" width="140">
+  </picture>
+</p>
+
+<h1 align="center">bakuljan</h1>
 
 Reusable CI for agent-driven Expo/Convex repos: the label-an-issue-get-a-PR loop,
 and the scan-a-QR-to-review loop, defined once and called from every app repo.
