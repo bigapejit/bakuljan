@@ -19,6 +19,11 @@ repo cannot be called from another private repo on a personal account.
 Callers reference `@main`. See [ADR-0001](docs/adr/0001-ci-is-a-kit-one-public-repo-called-at-main.md)
 for why, and for everything else that was decided here.
 
+**Setting up a new repo?** Point an agent at **[PLAYBOOK.md](PLAYBOOK.md)** and
+walk away. It is one self-contained document: it creates the labels, seeds
+`docs/agents/*`, writes all nine caller files with the repo's inputs, and prints
+the short list of pastes only the owner can do (secrets, Convex dashboard).
+
 ## What is in the kit
 
 | Workflow | What it does | Caller trigger |
@@ -36,6 +41,10 @@ for why, and for everything else that was decided here.
 The triggers stay in the caller: a called workflow reads the *caller's* event
 context, so the label checks and the draft guard inside these files work
 unchanged, but GitHub decides when to run from the caller's `on:` block alone.
+
+The kit also carries `sandcastle/`, the agent harness the five agent workflows
+check out and run. An app repo holds no copy of it — at most an optional
+`.sandcastle/context.md` naming what to read in that repo before starting.
 
 ## How a repo calls it
 
@@ -59,7 +68,6 @@ jobs:
     uses: bigapejit/bakuljan/.github/workflows/agent-implement.yml@main
     with:
       package-manager: npm
-      sandcastle-path: .sandcastle
       git-user-email: you@users.noreply.github.com
     secrets: inherit
 ```
@@ -149,7 +157,7 @@ out of its way to avoid.
 | Secret | Needed by | Without it |
 | --- | --- | --- |
 | `CLAUDE_CODE_OAUTH_TOKEN` | every agent workflow | the agent cannot run at all |
-| `AGENT_PAT` (PAT with `repo` + `workflow`) | every agent workflow | **the loop stops chaining** — see below |
+| `AGENT_PAT` (PAT with `repo`, `workflow`, `read:org`) | every agent workflow | **the loop stops chaining** — see below |
 | `EXPO_TOKEN` | preview, review-main, warm-caches | no previews |
 | `CONVEX_PREVIEW_DEPLOY_KEY` (a *Preview* deploy key) | preview | backend-changing PRs fall back to the shared dev deployment, with a warning |
 | `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`, `EXPO_PUBLIC_CONVEX_URL` | preview, review-main, warm-caches | the preview job fails its environment check |
@@ -175,7 +183,9 @@ chain re-label itself for the next sub-issue, promotion of a queued issue start
 an implement run, and — most visibly — `agent-review.yml`'s `gh pr ready` raise a
 `ready_for_review` event that the preview workflow can wake on. Without the PAT
 each of those lands silently and waits for a human. It also needs the `workflow`
-scope, because agent branches sometimes touch `.github/workflows/`.
+scope, because agent branches sometimes touch `.github/workflows/`, and
+`read:org` — without it the workflows' label writes fail and fall back to the
+suppressed default token, which is the same silent stall by another route.
 
 ## Invariants worth not breaking
 
