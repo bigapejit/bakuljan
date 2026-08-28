@@ -14,15 +14,25 @@ on:
         type: string
         default: npm
       sandcastle-path:
-        description: "Repo-relative directory holding the agent scripts (implement-pr/, ...)."
+        description: >-
+          Deprecated and ignored. The agent scripts moved into this kit
+          (ADR-0002), so the path stopped being an axis of variation. The input
+          survives only so existing caller files keep validating; delete the
+          line from your caller.
         type: string
         default: .sandcastle
+      kit-ref:
+        description: >-
+          Ref of bigapejit/bakuljan the agent harness is run from. `main` is the
+          contract; pin a tag or SHA to hold a repo on a known-good harness.
+        type: string
+        default: main
       node-version:
         description: "Node version the agent scripts run on."
         type: string
         default: "22"
       base-branch:
-        description: "Branch the trusted scripts are read from and the PR diffs against."
+        description: "Branch the PR diffs against."
         type: string
         default: main
       git-user-name:
@@ -60,8 +70,9 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       BASE_BRANCH: ${{ inputs.base-branch }}
+      # Installs the app's own dependencies — the ones the agent needs to
+      # typecheck and lint. The harness has its own, from this kit's lockfile.
       PM_INSTALL: ${{ inputs.package-manager == 'pnpm' && 'pnpm install' || inputs.package-manager == 'yarn' && 'yarn install' || 'npm install' }}
-      PM_EXEC: ${{ inputs.package-manager == 'pnpm' && 'pnpm exec' || inputs.package-manager == 'yarn' && 'yarn' || 'npx' }}
 
     steps:
       - name: Refuse untrusted PR branch
@@ -140,22 +151,27 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
 
-      - name: Checkout trusted workflow scripts
+      - name: Check out the agent harness from the kit
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
+        # This workflow reads code the PR author can edit, so the scripts that
+        # drive it must never come from the PR branch. They used to be pinned to
+        # the caller's base branch for that reason; now they come from the kit,
+        # which the PR cannot touch at all.
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.base-branch }}
+          repository: bigapejit/bakuljan
+          ref: ${{ inputs.kit-ref }}
           path: .agent-workflow
-          sparse-checkout: |
-            ${{ inputs.sandcastle-path }}/implement-pr
-            ${{ inputs.sandcastle-path }}/review/parse-diff-lines.ts
-            ${{ inputs.sandcastle-path }}/retry-feedback.ts
-            ${{ inputs.sandcastle-path }}/run-with-extraction.ts
-            ${{ inputs.sandcastle-path }}/run-with-retry.ts
+          # Cone mode, so this brings the harness plus every top-level file —
+          # which is how package.json and package-lock.json arrive.
+          sparse-checkout: sandcastle
+          persist-credentials: false
 
-      - name: Hide trusted workflow checkout from PR diffs
+      - name: Hide the harness checkout from the repo
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
-        run: echo ".agent-workflow/" >> .git/info/exclude
+        # The agent commits from this working tree, so the kit must be invisible
+        # to `git add`. info/exclude is local to the runner and never committed.
+        run: echo "/.agent-workflow/" >> .git/info/exclude
 
       - name: Ensure the base branch is available for diffing
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
@@ -168,6 +184,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
+          # Keyed on the kit's lockfile rather than the caller's: it changes far
+          # less often, so the ~/.npm cache it restores is nearly always warm.
+          cache: npm
+          cache-dependency-path: .agent-workflow/package-lock.json
 
       - name: Setup pnpm
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true' && inputs.package-manager == 'pnpm'
@@ -176,6 +196,11 @@ jobs:
       - name: Install dependencies
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
         run: $PM_INSTALL
+
+      - name: Install the harness dependencies
+        if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
+        working-directory: .agent-workflow
+        run: npm ci --omit=dev --prefer-offline --no-audit --fund=false
 
       - name: Install Claude Code
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true'
@@ -196,7 +221,7 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OUTPUT_DIR: ${{ runner.temp }}
-        run: $PM_EXEC tsx .agent-workflow/${{ inputs.sandcastle-path }}/implement-pr/implement-pr.ts
+        run: .agent-workflow/node_modules/.bin/tsx .agent-workflow/sandcastle/implement-pr/implement-pr.ts
 
       - name: Push branch (abort cleanly if non-fast-forward)
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && steps.inputs.outputs.proceed == 'true' && success()

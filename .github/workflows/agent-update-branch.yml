@@ -16,9 +16,19 @@ on:
         type: string
         default: npm
       sandcastle-path:
-        description: "Repo-relative directory holding the agent scripts (update-branch/, ...)."
+        description: >-
+          Deprecated and ignored. The agent scripts moved into this kit
+          (ADR-0002), so the path stopped being an axis of variation. The input
+          survives only so existing caller files keep validating; delete the
+          line from your caller.
         type: string
         default: .sandcastle
+      kit-ref:
+        description: >-
+          Ref of bigapejit/bakuljan the agent harness is run from. `main` is the
+          contract; pin a tag or SHA to hold a repo on a known-good harness.
+        type: string
+        default: main
       node-version:
         description: "Node version the agent scripts run on."
         type: string
@@ -58,8 +68,9 @@ jobs:
       PR_MERGED: ${{ github.event.pull_request.merged }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
+      # Installs the app's own dependencies — the ones the agent needs to
+      # typecheck and lint. The harness has its own, from this kit's lockfile.
       PM_INSTALL: ${{ inputs.package-manager == 'pnpm' && 'pnpm install' || inputs.package-manager == 'yarn' && 'yarn install' || 'npm install' }}
-      PM_EXEC: ${{ inputs.package-manager == 'pnpm' && 'pnpm exec' || inputs.package-manager == 'yarn' && 'yarn' || 'npx' }}
 
     steps:
       - name: Refuse untrusted PR branch
@@ -122,11 +133,33 @@ jobs:
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true'
         run: git checkout "$BRANCH" 2>/dev/null || git checkout -B "$BRANCH"
 
+      - name: Check out the agent harness from the kit
+        if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: bigapejit/bakuljan
+          ref: ${{ inputs.kit-ref }}
+          path: .agent-workflow
+          # Cone mode, so this brings the harness plus every top-level file —
+          # which is how package.json and package-lock.json arrive.
+          sparse-checkout: sandcastle
+          persist-credentials: false
+
+      - name: Hide the harness checkout from the repo
+        if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true'
+        # This job resolves conflicts and commits the merge from this working
+        # tree, so the kit must be invisible to `git add`.
+        run: echo "/.agent-workflow/" >> .git/info/exclude
+
       - name: Setup Node.js
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
+          # Keyed on the kit's lockfile rather than the caller's: it changes far
+          # less often, so the ~/.npm cache it restores is nearly always warm.
+          cache: npm
+          cache-dependency-path: .agent-workflow/package-lock.json
 
       - name: Setup pnpm
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && inputs.package-manager == 'pnpm'
@@ -135,6 +168,11 @@ jobs:
       - name: Install dependencies
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true'
         run: $PM_INSTALL
+
+      - name: Install the harness dependencies
+        if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true'
+        working-directory: .agent-workflow
+        run: npm ci --omit=dev --prefer-offline --no-audit --fund=false
 
       - name: Install Claude Code
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true'
@@ -155,7 +193,7 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OUTPUT_DIR: ${{ runner.temp }}
-        run: $PM_EXEC tsx ${{ inputs.sandcastle-path }}/update-branch/update-branch.ts
+        run: .agent-workflow/node_modules/.bin/tsx .agent-workflow/sandcastle/update-branch/update-branch.ts
 
       - name: Push branch (abort cleanly if non-fast-forward)
         if: steps.trust.outputs.trusted == 'true' && steps.state.outputs.proceed == 'true' && success()
