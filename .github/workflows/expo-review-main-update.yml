@@ -1,0 +1,107 @@
+name: Expo Review Main Update
+
+# Reusable. Publishes the default branch to a fixed EAS channel, so the owner
+# can scan one QR that always shows what is merged. The caller owns the trigger,
+# normally just:
+#
+#   on:
+#     workflow_dispatch:
+
+on:
+  workflow_call:
+    inputs:
+      package-manager:
+        description: "npm, pnpm, or yarn. Decides the install command and the setup-node cache."
+        type: string
+        default: npm
+      node-version:
+        description: "Node version. Part of the node_modules cache key, so it must match the warm-caches caller."
+        type: string
+        default: "22"
+      app-variant:
+        description: "Value of APP_VARIANT for the bundle, for repos whose app config switches on it."
+        type: string
+        default: review
+      eas-channel:
+        description: "EAS update channel this publishes to."
+        type: string
+        default: review-main
+      eas-environment:
+        description: "EAS environment whose variables the publish reads."
+        type: string
+        default: preview
+      eas-platform:
+        description: "Platform passed to eas update."
+        type: string
+        default: all
+
+jobs:
+  update:
+    name: Publish review-main update
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      APP_VARIANT: ${{ inputs.app-variant }}
+      REVIEW_REF: main
+      REVIEW_GIT_REF: main
+      REVIEW_GIT_SHA: ${{ github.sha }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_CONVEX_URL: ${{ secrets.EXPO_PUBLIC_CONVEX_URL || vars.EXPO_PUBLIC_CONVEX_URL }}
+      PM_CI: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile --prefer-offline' || inputs.package-manager == 'yarn' && 'yarn install --immutable' || 'npm ci --prefer-offline --no-audit --fund=false' }}
+
+    steps:
+      - name: Check required preview environment
+        run: |
+          missing=()
+          for name in EXPO_TOKEN EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY EXPO_PUBLIC_CONVEX_URL; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required GitHub Actions secrets or variables: ${missing[*]}"
+            echo "Create EXPO_TOKEN at https://expo.dev/settings/access-tokens. Copy the EXPO_PUBLIC_* values from the app environment."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+
+      - name: Setup pnpm
+        if: inputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+
+      # Same node_modules cache the PR preview reads, written on the default
+      # branch by warm-caches.yml. Restore-only for the same reason: this job
+      # runs from the default branch, where the warm workflow is the writer.
+      - name: Restore node_modules
+        id: node-modules
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'patches/**') }}
+
+      - name: Install dependencies
+        if: steps.node-modules.outputs.cache-hit != 'true'
+        run: $PM_CI
+
+      # eas-cli is expected as a pinned devDependency, so it comes with
+      # node_modules rather than being reinstalled by expo/expo-github-action@v8,
+      # whose eas-cli cache the GitHub cache service answers with HTTP 400 on
+      # every run. EXPO_TOKEN in the job env is all the CLI needs to
+      # authenticate.
+      - name: Use the project eas-cli
+        run: echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Publish main review update
+        run: eas update --channel ${{ inputs.eas-channel }} --platform ${{ inputs.eas-platform }} --message "Review main ${GITHUB_SHA}" --environment ${{ inputs.eas-environment }} --non-interactive

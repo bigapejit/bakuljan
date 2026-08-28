@@ -1,0 +1,156 @@
+name: Warm CI caches
+
+# Reusable. The writer for the caches expo-pr-preview.yml reads. It has to run
+# on the default branch and no other: GitHub Actions caches saved on a branch are
+# visible to that branch and its children only, while caches saved on the default
+# branch are visible to every branch in the repo. Every agent PR is a fresh
+# branch off main, so a preview can never warm itself — main warms it.
+#
+# One run per merge (~2-3 minutes) against ~130 preview runs a month. The caller
+# owns the trigger:
+#
+#   on:
+#     push:
+#       branches: [main]
+#       paths-ignore: ["**/*.md", "docs/**"]
+#     workflow_dispatch:
+#
+# Nothing cached here depends on prose, hence paths-ignore. The workflow_dispatch
+# covers the one case a merge does not: an EXPO_PUBLIC_* value changing in the
+# EAS environment or in repo secrets. Metro inlines those values into the modules
+# that read them and does not key the cache on them, so previews keep bundling
+# the old value until this is run by hand.
+
+on:
+  workflow_call:
+    inputs:
+      package-manager:
+        description: "npm, pnpm, or yarn. Decides the install command and the setup-node cache."
+        type: string
+        default: npm
+      node-version:
+        description: "Node version. Part of the cache keys, so it must match the expo-pr-preview caller."
+        type: string
+        default: "22"
+      app-variant:
+        description: "Value of APP_VARIANT for the warm bundle. Must match the preview caller: it selects the app config the transforms are cached against."
+        type: string
+        default: review
+      eas-environment:
+        description: "EAS environment whose variables the warm bundle is built under. Must match the preview caller."
+        type: string
+        default: preview
+      eas-platform:
+        description: "Platform the warm export bundles."
+        type: string
+        default: ios
+
+jobs:
+  warm:
+    name: Warm node_modules and Metro caches
+    runs-on: ubuntu-latest
+    # Only the newest default-branch commit matters; a queued warm from three
+    # merges ago would save a cache the next one immediately supersedes.
+    concurrency:
+      group: warm-caches
+      cancel-in-progress: true
+    permissions:
+      contents: read
+
+    # The same environment the preview job publishes with, because the export
+    # below bakes these values into the cached transforms. APP_VARIANT included:
+    # it selects the same app config the preview resolves.
+    env:
+      APP_VARIANT: ${{ inputs.app-variant }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_CONVEX_URL: ${{ secrets.EXPO_PUBLIC_CONVEX_URL || vars.EXPO_PUBLIC_CONVEX_URL }}
+      PM_CI: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile --prefer-offline' || inputs.package-manager == 'yarn' && 'yarn install --immutable' || 'npm ci --prefer-offline --no-audit --fund=false' }}
+      PM_EXEC: ${{ inputs.package-manager == 'pnpm' && 'pnpm exec' || inputs.package-manager == 'yarn' && 'yarn' || 'npx' }}
+
+    steps:
+      # Fail loudly rather than warm a wrong cache. Without EXPO_TOKEN the
+      # export below cannot read the EAS environment, and the transforms it
+      # saved would inline missing values into every preview that restored
+      # them — worse than no cache, which only costs time.
+      - name: Check required warm-cache environment
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "EXPO_TOKEN is not set, so the Metro cache cannot be warmed with the EAS environment."
+            echo "Create a token at https://expo.dev/settings/access-tokens and add it as the EXPO_TOKEN repository secret."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+
+      - name: Setup pnpm
+        if: inputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+
+      # actions/cache rather than restore+save: on a hit (a merge that did not
+      # touch the lockfile) the post-step saves nothing, so most merges pay only
+      # the download. The key is the exact string the readers restore by — the
+      # three workflows are one contract, and a rename in one of them that is
+      # not mirrored in the others turns every preview back into a cold run,
+      # silently and with a green check.
+      - name: Cache node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'patches/**') }}
+
+      - name: Install dependencies
+        if: steps.node-modules.outputs.cache-hit != 'true'
+        run: $PM_CI
+
+      - name: Use the project eas-cli
+        run: echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"
+
+      # Metro's transform cache root is `os.tmpdir()/metro-cache`, so TMPDIR is
+      # what decides where the export below writes it and whether the save step
+      # finds anything. Written here because the job's `env:` is evaluated
+      # before a runner exists, where `runner.temp` is not available.
+      - name: Point Metro's cache at the runner temp directory
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      # `expo export` is what `eas update` runs to bundle, so this fills the
+      # transform cache with the entries a preview asks for — minus whatever the
+      # PR changed. Measured: 92s cold, 17s against this cache.
+      #
+      # Wrapped in `eas env:exec` because the preview job publishes with
+      # `--environment`, which merges the EAS-hosted variables over the process
+      # environment. Those values get inlined into the transforms saved here, so
+      # bundling without them would cache modules that quietly drop them. This
+      # publishes nothing: it only writes a throwaway bundle to the runner.
+      - name: Warm the Metro transform cache
+        run: |
+          eas env:exec ${{ inputs.eas-environment }} \
+            "$PM_EXEC expo export --platform ${{ inputs.eas-platform }} --output-dir $RUNNER_TEMP/warm-export" \
+            --non-interactive
+
+      # Every run leaves a newer cache; the preview restores by the shared
+      # prefix and takes the most recent one. Save runs only if the export
+      # succeeded — half a cache is worse than none, because its key would still
+      # win the prefix match.
+      #
+      # The run id, not the commit alone, is what makes the key unique. A cache
+      # key can only be written once: re-reserving an existing one is logged and
+      # skipped, not overwritten. Keyed on the commit alone, the
+      # workflow_dispatch the caller offers for exactly the case where the
+      # default branch has NOT moved — an EXPO_PUBLIC_* value changed in EAS —
+      # would bundle for two minutes and then silently save nothing, leaving the
+      # stale transforms in place. The commit stays in the key so the cache list
+      # still says which commit warmed it.
+      - name: Save the Metro transform cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/metro-cache
+          key: metro-cache-${{ runner.os }}-node${{ inputs.node-version }}-${{ github.sha }}-${{ github.run_id }}

@@ -1,0 +1,132 @@
+name: Agent Promote Queued
+
+# Reusable. The caller keeps the `issues: [closed]` trigger.
+#
+# When an issue closes, find every `agent:queued` issue that declared it as a
+# blocker via the native GitHub issue dependency relation. If any of those
+# dependents have no remaining open blockers, flip `agent:queued` to
+# `agent:implement` so `agent-implement.yml` picks them up.
+#
+# Manual application only: humans apply `agent:queued`. This workflow is the
+# exit ramp, not the entrance.
+#
+# No inputs: this workflow only ever talks to the GitHub API, so nothing about
+# it varies per repo.
+
+on:
+  workflow_call:
+
+jobs:
+  promote:
+    # Wontfix closes do not unblock anything in a meaningful sense.
+    if: github.event.issue.state_reason != 'not_planned'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+
+    env:
+      CLOSED_NUMBER: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      # AGENT_PAT is required for the promoted `agent:implement` label to
+      # fire `agent-implement.yml`. Labels added via GITHUB_TOKEN do not
+      # trigger downstream workflows. Falls back to GITHUB_TOKEN, in which
+      # case promotion lands but the downstream run will not auto-trigger.
+      AGENT_PAT: ${{ secrets.AGENT_PAT }}
+
+    steps:
+      - name: Find dependents of the closed issue
+        id: dependents
+        run: |
+          set -euo pipefail
+          owner="${GH_REPO%/*}"
+          repo="${GH_REPO#*/}"
+          # `blocking` is the connection from the closed issue to issues that
+          # declared it as a blocker, i.e. our promotion candidates.
+          dependents=$(gh api graphql \
+            -f query='query($owner: String!, $repo: String!, $num: Int!) { repository(owner: $owner, name: $repo) { issue(number: $num) { blocking(first: 100) { nodes { number state } } } } }' \
+            -f owner="$owner" -f repo="$repo" -F num="$CLOSED_NUMBER" \
+            --jq '[.data.repository.issue.blocking.nodes[] | select(.state == "OPEN") | .number]')
+          echo "list=$dependents" >> "$GITHUB_OUTPUT"
+          echo "Found dependents: $dependents"
+
+      - name: Evaluate and promote each dependent
+        if: steps.dependents.outputs.list != '[]'
+        env:
+          DEPENDENTS_JSON: ${{ steps.dependents.outputs.list }}
+        run: |
+          set -euo pipefail
+          owner="${GH_REPO%/*}"
+          repo="${GH_REPO#*/}"
+
+          echo "$DEPENDENTS_JSON" | jq -r '.[]' | while read -r dependent; do
+            echo "::group::Evaluating #$dependent"
+
+            dependent_data=$(gh api graphql \
+              -f query='query($owner: String!, $repo: String!, $num: Int!) { repository(owner: $owner, name: $repo) { issue(number: $num) { labels(first: 50) { nodes { name } } parent { number } blockedBy(first: 100) { nodes { number state } } } } }' \
+              -f owner="$owner" -f repo="$repo" -F num="$dependent")
+
+            has_queued=$(echo "$dependent_data" | jq '[.data.repository.issue.labels.nodes[].name] | index("agent:queued") != null')
+            has_in_progress=$(echo "$dependent_data" | jq '[.data.repository.issue.labels.nodes[].name] | index("agent:in-progress") != null')
+            parent_num=$(echo "$dependent_data" | jq -r '.data.repository.issue.parent.number // empty')
+            remaining_open=$(echo "$dependent_data" | jq '[.data.repository.issue.blockedBy.nodes[] | select(.state == "OPEN")] | length')
+
+            if [ "$has_queued" != "true" ]; then
+              echo "Skip: #$dependent is not agent:queued"
+              echo "::endgroup::"
+              continue
+            fi
+
+            if [ "$has_in_progress" = "true" ]; then
+              echo "Skip: #$dependent is agent:in-progress"
+              echo "::endgroup::"
+              continue
+            fi
+
+            if [ -n "$parent_num" ]; then
+              echo "Refuse: #$dependent is a sub-issue of #$parent_num"
+              gh issue edit "$dependent" --remove-label "agent:queued" || true
+              gh issue edit "$dependent" --add-label "agent:blocked" || true
+              gh issue comment "$dependent" --body "Refused to promote: this is a sub-issue of #${parent_num}. \`agent:queued\` is not meaningful on sub-issues; label the parent PRD instead. Cleared \`agent:queued\` and added \`agent:blocked\`."
+              echo "::endgroup::"
+              continue
+            fi
+
+            if [ "$remaining_open" -gt 0 ]; then
+              echo "Skip: #$dependent still has $remaining_open open blocker(s)"
+              echo "::endgroup::"
+              continue
+            fi
+
+            # Idempotent flip: re-fetch labels right before mutating to lose
+            # races against a sibling run of this workflow.
+            still_queued=$(gh issue view "$dependent" --json labels --jq '[.labels[].name] | index("agent:queued") != null')
+            if [ "$still_queued" != "true" ]; then
+              echo "Skip: #$dependent no longer has agent:queued (lost race)"
+              echo "::endgroup::"
+              continue
+            fi
+
+            echo "Promote: #$dependent"
+            gh issue edit "$dependent" --remove-label "agent:queued"
+            gh issue comment "$dependent" --body "Unblocked by #${CLOSED_NUMBER} closing; promoting from \`agent:queued\` to \`agent:implement\`."
+
+            # Use AGENT_PAT for the agent:implement add so downstream
+            # agent-implement.yml fires. Fall back to GITHUB_TOKEN if PAT is
+            # absent; in that case the label lands but will not trigger.
+            set +e
+            if [ -n "$AGENT_PAT" ]; then
+              GH_TOKEN="$AGENT_PAT" gh issue edit "$dependent" --add-label "agent:implement"
+              status=$?
+              if [ "$status" -ne 0 ]; then
+                echo "AGENT_PAT add-label failed (status $status); falling back to GITHUB_TOKEN."
+                gh issue edit "$dependent" --add-label "agent:implement"
+              fi
+            else
+              gh issue edit "$dependent" --add-label "agent:implement"
+            fi
+            set -e
+
+            echo "::endgroup::"
+          done

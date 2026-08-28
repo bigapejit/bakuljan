@@ -1,0 +1,404 @@
+name: Expo PR Preview
+
+# Reusable. The caller keeps the trigger, which must include ready_for_review:
+#
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened, ready_for_review, labeled]
+#
+# ready_for_review is what makes the draft guard below usable: it is the moment
+# an agent PR becomes something the owner is meant to scan.
+
+on:
+  workflow_call:
+    inputs:
+      package-manager:
+        description: "npm, pnpm, or yarn. Decides the install command and the setup-node cache."
+        type: string
+        default: npm
+      node-version:
+        description: "Node version the bundle is built with. Part of the cache keys, so it must match the warm-caches caller."
+        type: string
+        default: "22"
+      app-variant:
+        description: "Value of APP_VARIANT for the bundle, for repos whose app config switches on it."
+        type: string
+        default: review
+      preview-paths:
+        description: >-
+          dorny/paths-filter globs, one `- "glob"` list item per line, no leading
+          indentation (they are spliced under `preview:` at the same column). A
+          PR that touches none of them publishes nothing, unless it carries
+          preview:force.
+        type: string
+        required: true
+      convex-paths:
+        description: >-
+          Same shape as preview-paths: the globs that count as backend changes.
+          Only consulted in per-convex-pr mode.
+        type: string
+        default: '- "convex/**"'
+      convex-preview-mode:
+        description: >-
+          per-convex-pr: only a PR touching convex-paths gets a backend, minted
+          throwaway with --preview-create and named after the PR number.
+          shared-branch-backend: every previewed PR deploys to a --preview-name
+          backend named for its branch, which is also where a web preview built
+          by Convex's default CI naming lands.
+        type: string
+        required: true
+      convex-seed-function:
+        description: "Convex function --preview-run calls to seed a fresh preview backend."
+        type: string
+        default: "seed:run"
+      eas-environment:
+        description: "EAS environment whose variables the publish reads. Must match the warm-caches caller."
+        type: string
+        default: preview
+      eas-platform:
+        description: "Platform passed to eas update."
+        type: string
+        default: ios
+
+jobs:
+  # One job on purpose. The path filter used to be a job of its own, which meant
+  # every preview paid two rounded runner minutes for five seconds of filtering;
+  # it is a step now, with the same filters and the same convex/** answer.
+  update:
+    name: Publish review update
+    # Drafts publish nothing. The implement agent and then the review agent both
+    # push to a draft, so a draft preview was code the owner never scanned and
+    # was usually cancelled mid-bundle by the next push; the first QR should be
+    # the reviewed code. The review workflow marks the PR ready with AGENT_PAT
+    # (see its "Mark PR ready for review" step) precisely so the resulting
+    # ready_for_review event can wake this workflow — an event raised by the
+    # default GITHUB_TOKEN is suppressed by GitHub and would leave ready PRs
+    # with no preview at all. Do not change that step.
+    #
+    # preview:force overrides the draft guard, for an early look at a draft.
+    # Label events only publish when the added label is preview:force — other
+    # labels (agent:* workflow state) would otherwise re-bundle identical code.
+    if: |
+      (github.event.action != 'labeled' || github.event.label.name == 'preview:force') &&
+      (
+        github.event.pull_request.draft == false ||
+        contains(github.event.pull_request.labels.*.name, 'preview:force')
+      )
+    runs-on: ubuntu-latest
+    concurrency:
+      group: expo-pr-preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
+
+    env:
+      APP_VARIANT: ${{ inputs.app-variant }}
+      REVIEW_REF: "PR #${{ github.event.pull_request.number }}"
+      REVIEW_GIT_REF: ${{ github.head_ref }}
+      REVIEW_GIT_SHA: ${{ github.event.pull_request.head.sha }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || vars.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_CONVEX_URL: ${{ secrets.EXPO_PUBLIC_CONVEX_URL || vars.EXPO_PUBLIC_CONVEX_URL }}
+      # A Convex *preview* deploy key: it can only create preview deployments,
+      # never touch dev or prod, which is why it is safe to hand to a workflow
+      # that runs on every PR. Read as an env var rather than inline, so the
+      # steps below can branch on whether it exists (the secrets context is not
+      # available in a step's `if`).
+      CONVEX_PREVIEW_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+      # The caller's package manager, resolved once into the commands the steps
+      # below need.
+      PM_CI: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile --prefer-offline' || inputs.package-manager == 'yarn' && 'yarn install --immutable' || 'npm ci --prefer-offline --no-audit --fund=false' }}
+      PM_EXEC: ${{ inputs.package-manager == 'pnpm' && 'pnpm exec' || inputs.package-manager == 'yarn' && 'yarn' || 'npx' }}
+
+    steps:
+      # No checkout above this: on pull_request events paths-filter asks the API
+      # for the changed files, which is why this can be the first thing the job
+      # does and why a docs-only PR never installs anything.
+      # `convex` is a narrower question than "should we publish": does this PR
+      # change the backend? In per-convex-pr mode only those PRs need a backend
+      # of their own, because only they carry functions and a schema the shared
+      # dev deployment has never seen.
+      #
+      # Both inputs are spliced in at the same column as the key above them, so
+      # a caller's list items need no indentation of their own — a multi-line
+      # expression result is inserted verbatim, and only its first line would
+      # inherit any indentation written here.
+      - name: Detect preview scope
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            preview:
+            ${{ inputs.preview-paths }}
+            convex:
+            ${{ inputs.convex-paths }}
+
+      # The single answer every step below reads, so the file-scope rule lives in
+      # one place instead of being repeated down the job.
+      - name: Decide whether to publish
+        id: scope
+        env:
+          PREVIEW_PATHS: ${{ steps.filter.outputs.preview }}
+          FORCED: ${{ contains(github.event.pull_request.labels.*.name, 'preview:force') }}
+        run: |
+          if [ "$PREVIEW_PATHS" = "true" ] || [ "$FORCED" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No app-visible files changed, so no Expo preview was published. Add the preview:force label to publish one anyway."
+          fi
+
+      # The second single answer: does this PR bundle against a backend of its
+      # own? The two modes differ only here, and every Convex step below reads
+      # this instead of asking about the mode again.
+      - name: Decide whether this PR needs its own Convex backend
+        id: backend
+        if: steps.scope.outputs.publish == 'true'
+        env:
+          MODE: ${{ inputs.convex-preview-mode }}
+          CONVEX_CHANGED: ${{ steps.filter.outputs.convex }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            per-convex-pr)
+              # Only a PR that rewrites the backend needs one of its own.
+              if [ "$CONVEX_CHANGED" = "true" ]; then own="true"; else own="false"; fi
+              ;;
+            shared-branch-backend)
+              # Every previewed PR joins the branch-named backend the repo's web
+              # preview also deploys to, so every previewed PR deploys to it.
+              own="true"
+              ;;
+            *)
+              echo "convex-preview-mode must be per-convex-pr or shared-branch-backend, got: '$MODE'" >&2
+              exit 1
+              ;;
+          esac
+          echo "own=$own" >> "$GITHUB_OUTPUT"
+
+      # CONVEX_PREVIEW_DEPLOY_KEY is deliberately not in this list. Without it a
+      # PR still gets a preview, just one pointed at the shared dev deployment,
+      # so a missing key is a warning further down rather than a red check.
+      - name: Check required preview environment
+        if: steps.scope.outputs.publish == 'true'
+        run: |
+          missing=()
+          for name in EXPO_TOKEN EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY EXPO_PUBLIC_CONVEX_URL; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required GitHub Actions secrets or variables: ${missing[*]}"
+            echo "Create EXPO_TOKEN at https://expo.dev/settings/access-tokens. Copy the EXPO_PUBLIC_* values from the app environment."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        if: steps.scope.outputs.publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.scope.outputs.publish == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+
+      - name: Setup pnpm
+        if: steps.scope.outputs.publish == 'true' && inputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+
+      # Restore, never save. A cache written from a PR branch is readable from
+      # that branch alone, and every agent PR is a branch that exists for a day,
+      # so the only useful writer is warm-caches.yml on the default branch —
+      # saving here would burn a minute uploading a cache nobody can read.
+      #
+      # No restore-keys either: an approximate node_modules is not a warm start,
+      # it is the wrong dependency tree. A PR that touches the lockfile (or
+      # patches/, which postinstall applies and a restored tree never re-runs)
+      # misses on purpose and installs from the package manager's download cache
+      # as before. All three lockfile names are hashed so the key does not have
+      # to know which package manager the caller uses; only one of them exists.
+      - name: Restore node_modules
+        id: node-modules
+        if: steps.scope.outputs.publish == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'patches/**') }}
+
+      - name: Install dependencies
+        if: steps.scope.outputs.publish == 'true' && steps.node-modules.outputs.cache-hit != 'true'
+        run: $PM_CI
+
+      # eas-cli is expected as a pinned devDependency, so it arrives inside the
+      # restored node_modules and costs nothing. It used to come from
+      # expo/expo-github-action@v8, whose own eas-cli cache is answered with
+      # HTTP 400 by the current GitHub cache service on every run — the action
+      # then quietly reinstalled the CLI from scratch, ~26s of every preview.
+      # Authentication is unchanged: eas-cli reads EXPO_TOKEN from the job env.
+      # expo/expo-github-action/preview below resolves `eas` off PATH, which is
+      # why the local bin directory has to be on it.
+      - name: Use the project eas-cli
+        if: steps.scope.outputs.publish == 'true'
+        run: echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"
+
+      # Metro writes its transform cache to `os.tmpdir()/metro-cache` (SDK 55
+      # builds the FileStore there; it is NOT node_modules/.cache/metro), so
+      # TMPDIR is the only handle CI has on that path, and pinning it is what
+      # makes the restore below point at the directory the bundle will read.
+      # It has to be written here rather than in the job's `env:`, where the
+      # runner context does not exist yet.
+      - name: Point Metro's cache at the runner temp directory
+        if: steps.scope.outputs.publish == 'true'
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      # Metro's cache is content-addressed per module, so an older cache is
+      # never wrong, only less complete: the newest one under the prefix is a
+      # fine starting point and the PR's changed files re-transform.
+      #
+      # Except for one thing it is NOT keyed on: EXPO_PUBLIC_* values are
+      # inlined into the modules that read them at transform time, and the cache
+      # key ignores them (measured: two exports differing only in
+      # EXPO_PUBLIC_CONVEX_URL produced byte-identical bundles carrying the first
+      # run's URL). A PR with its own backend is exactly the case where that
+      # value differs from the default branch's, so those PRs bundle cold rather
+      # than risk a QR that points at the shared dev backend — the same swap the
+      # publish steps below take pains to avoid. The warm job bundles under
+      # `eas env:exec`, so for every other PR the inlined values match what
+      # --environment supplies here. Change an EXPO_PUBLIC_* value in EAS and the
+      # cache holds the old one until the default branch is re-warmed: run
+      # warm-caches.yml by hand.
+      - name: Restore the Metro transform cache
+        if: steps.scope.outputs.publish == 'true' && steps.backend.outputs.own != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/metro-cache
+          # Prefix only, deliberately: `key` and `restore-keys` are the same
+          # string so no cache can ever win by exact match, and the newest one
+          # the default branch warmed is always what a preview gets. Pinning
+          # `key` to the PR's base commit would look sharper and be worse —
+          # after an EXPO_PUBLIC_* change is re-warmed by hand, the base commit's
+          # cache is precisely the stale one, and an exact hit would keep
+          # choosing it over the fresh one. Content-addressing is what makes the
+          # loose key safe: an older cache is never wrong, only less complete.
+          key: metro-cache-${{ runner.os }}-node${{ inputs.node-version }}-
+          restore-keys: |
+            metro-cache-${{ runner.os }}-node${{ inputs.node-version }}-
+
+      # A PR that rewrites the backend cannot be reviewed against the shared dev
+      # deployment: its functions and schema were never pushed there, and pushing
+      # them would break every other preview and the owner's own phone. So it
+      # gets a backend of its own, seeded because a fresh preview deployment is
+      # born empty and an empty app reviews nothing.
+      #
+      # Which backend depends on the mode. per-convex-pr uses --preview-create,
+      # which deletes and recreates the deployment on every push, so the data can
+      # never be a stale mix of two schemas and the seed runs again each time.
+      # shared-branch-backend uses --preview-name, because a second CI system
+      # (a Vercel web preview) is deploying to the same backend for the same PR:
+      # two systems racing to delete each other's deployment mid-review is worse
+      # than carrying data across pushes. That race is also why it retries.
+      - name: Create Convex preview deployment
+        id: convex-preview
+        if: steps.scope.outputs.publish == 'true' && steps.backend.outputs.own == 'true' && env.CONVEX_PREVIEW_DEPLOY_KEY != ''
+        env:
+          CONVEX_DEPLOY_KEY: ${{ env.CONVEX_PREVIEW_DEPLOY_KEY }}
+          MODE: ${{ inputs.convex-preview-mode }}
+          SEED_FUNCTION: ${{ inputs.convex-seed-function }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Convex names a CI preview deployment after the git branch verbatim,
+          # slashes included, so this is passed unsanitised: a sanitised name
+          # would silently mint a second backend for any agent/... branch and the
+          # web preview would still be on the first. It is passed explicitly
+          # because a pull_request checkout is a detached HEAD, where Convex's
+          # own branch detection would resolve the useless name "HEAD".
+          PREVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "shared-branch-backend" ]; then
+            deploy_args=(--preview-name "$PREVIEW_BRANCH")
+            attempts=3
+          else
+            deploy_args=(--preview-create "pr-${PR_NUMBER}")
+            attempts=1
+          fi
+
+          # Convex generates the deployment's hostname, so the only way to learn
+          # it is --cmd, which runs a command with the URL in the variable named
+          # by --cmd-url-env-var-name. Here that command just writes the URL down
+          # for the steps below instead of doing the build itself.
+          deployed=false
+          for attempt in $(seq 1 "$attempts"); do
+            if $PM_EXEC convex deploy \
+              "${deploy_args[@]}" \
+              --preview-run "$SEED_FUNCTION" \
+              --cmd-url-env-var-name CONVEX_PREVIEW_URL \
+              --cmd 'printenv CONVEX_PREVIEW_URL > "$RUNNER_TEMP/convex-preview-url"'; then
+              deployed=true
+              break
+            fi
+            if [ "$attempt" -lt "$attempts" ]; then
+              echo "::warning::convex deploy attempt $attempt failed (likely a concurrent push from another CI system deploying to the same backend); retrying in 30s"
+              sleep 30
+            fi
+          done
+
+          if [ "$deployed" != "true" ]; then
+            echo "convex deploy failed after ${attempts} attempt(s)"
+            exit 1
+          fi
+
+          url="$(cat "$RUNNER_TEMP/convex-preview-url")"
+          if [ -z "$url" ]; then
+            echo "convex deploy did not report a preview deployment URL"
+            exit 1
+          fi
+
+          # Both halves of one backend: queries and mutations over .convex.cloud,
+          # HTTP actions over the .convex.site twin. An app that derives the twin
+          # itself usually prefers an explicit value when one exists — writing it
+          # here means nothing else can supply a twin that points at a different
+          # deployment.
+          {
+            echo "EXPO_PUBLIC_CONVEX_URL=$url"
+            echo "EXPO_PUBLIC_CONVEX_SITE_URL=${url%.convex.cloud}.convex.site"
+          } >> "$GITHUB_ENV"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      # This workflow has to survive the PR that introduces it, and any repo
+      # clone that never adds the key. Falling back to the old behaviour is
+      # right; doing it silently is not, because the preview would look like it
+      # was testing the branch's backend when it was not.
+      - name: Warn that Convex previews are unconfigured
+        if: steps.scope.outputs.publish == 'true' && steps.backend.outputs.own == 'true' && env.CONVEX_PREVIEW_DEPLOY_KEY == ''
+        run: |
+          echo "::warning::This PR needs a Convex preview backend, but the CONVEX_PREVIEW_DEPLOY_KEY secret is not set, so the preview runs against the shared dev deployment and will not include this branch's backend changes. Add a Convex Preview deploy key (Convex dashboard -> project Settings -> Deploy keys -> Generate a Preview deploy key) as a repository secret named CONVEX_PREVIEW_DEPLOY_KEY."
+
+      # The convex-preview path publishes WITHOUT --environment, and that is the
+      # whole trick. eas update merges the EAS-hosted environment's variables
+      # over the process environment (eas-cli spreads them last, so the server
+      # value wins), which would quietly put the shared dev URL back into a
+      # bundle we just pointed at a per-PR backend. Omitting the flag makes
+      # eas update use the process environment alone; --auto is what keeps that
+      # legal on SDK 55, where the flag is otherwise prompted for.
+      #
+      # The cost: this bundle gets only the EXPO_PUBLIC_* values set on the job
+      # above, so the EAS environment's extras are missing — a portal base URL
+      # most of all, which degrades Share to a plain share with no link. That is
+      # the honest outcome anyway: a portal is one fixed origin wired to the
+      # shared dev backend, and it could never read this PR's data.
+      - name: Create PR preview against the Convex preview deployment
+        if: steps.scope.outputs.publish == 'true' && steps.convex-preview.outputs.url != ''
+        uses: expo/expo-github-action/preview@v8
+        with:
+          command: eas update --auto --platform ${{ inputs.eas-platform }} --non-interactive
+
+      - name: Create PR preview
+        if: steps.scope.outputs.publish == 'true' && steps.convex-preview.outputs.url == ''
+        uses: expo/expo-github-action/preview@v8
+        with:
+          command: eas update --auto --platform ${{ inputs.eas-platform }} --environment ${{ inputs.eas-environment }} --non-interactive
