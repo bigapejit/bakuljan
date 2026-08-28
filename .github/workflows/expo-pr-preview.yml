@@ -196,6 +196,34 @@ jobs:
             exit 1
           fi
 
+      # The union of the optional EXPO_PUBLIC_* values the app repos on this kit
+      # bundle: analytics keys, and an explicit .convex.site twin for an app that
+      # does not derive one. A repo that sets none of them is unaffected, which
+      # is the point of writing each name only when it has a value: an
+      # EXPO_PUBLIC_* variable set to the empty string is not the same as an
+      # unset one, because Metro inlines whatever is there and a `??` fallback in
+      # the app would take "" as an answer. Add a name here and to the loop to
+      # extend the list; there is no way to read a secret whose name is only
+      # known at run time, so both halves have to be literal.
+      #
+      # EXPO_PUBLIC_CONVEX_SITE_URL is written before the Convex preview step
+      # below on purpose: when a PR gets a backend of its own, that step's twin
+      # is the right one and overwrites this.
+      - name: Pass through optional public environment
+        if: steps.scope.outputs.publish == 'true'
+        env:
+          EXPO_PUBLIC_CONVEX_SITE_URL: ${{ secrets.EXPO_PUBLIC_CONVEX_SITE_URL || vars.EXPO_PUBLIC_CONVEX_SITE_URL }}
+          EXPO_PUBLIC_POSTHOG_API_KEY: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY || vars.EXPO_PUBLIC_POSTHOG_API_KEY }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.EXPO_PUBLIC_POSTHOG_HOST || vars.EXPO_PUBLIC_POSTHOG_HOST }}
+        run: |
+          set -euo pipefail
+          for name in EXPO_PUBLIC_CONVEX_SITE_URL EXPO_PUBLIC_POSTHOG_API_KEY EXPO_PUBLIC_POSTHOG_HOST; do
+            value="${!name}"
+            if [ -n "$value" ]; then
+              echo "$name=$value" >> "$GITHUB_ENV"
+            fi
+          done
+
       - name: Checkout repository
         if: steps.scope.outputs.publish == 'true'
         uses: actions/checkout@v4
