@@ -94,6 +94,27 @@ jobs:
         if: inputs.package-manager == 'pnpm'
         uses: pnpm/action-setup@v4
 
+      # npm can hoist most workspace dependencies to the root while leaving
+      # conflicting versions under (for example) apps/web/node_modules. A
+      # root-only cache would restore successfully, skip the install below, and
+      # leave that workspace incomplete. Keep the flat-repo path byte-for-byte
+      # the same, but include every node_modules tree when package.json declares
+      # workspaces. actions/cache expands the glob while saving and restores the
+      # resulting archive at the same repository-relative paths.
+      - name: Resolve node_modules cache paths
+        id: node-modules-paths
+        shell: bash
+        run: |
+          paths=node_modules
+          if node -e 'const w = require("./package.json").workspaces; const p = Array.isArray(w) ? w : w?.packages; process.exit(Array.isArray(p) && p.length > 0 ? 0 : 1)'; then
+            paths+=$'\n**/*/node_modules\n!**/node_modules/**/node_modules'
+          fi
+          {
+            echo 'paths<<EOF'
+            echo "$paths"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       # actions/cache rather than restore+save: on a hit (a merge that did not
       # touch the lockfile) the post-step saves nothing, so most merges pay only
       # the download. The key is the exact string the readers restore by — the
@@ -104,7 +125,7 @@ jobs:
         id: node-modules
         uses: actions/cache@v4
         with:
-          path: node_modules
+          path: ${{ steps.node-modules-paths.outputs.paths }}
           key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'patches/**') }}
 
       - name: Install dependencies
