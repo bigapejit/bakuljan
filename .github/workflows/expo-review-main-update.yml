@@ -98,6 +98,24 @@ jobs:
         if: inputs.package-manager == 'pnpm'
         uses: pnpm/action-setup@v4
 
+      # npm workspaces can contain dependency trees outside the root
+      # node_modules. Resolve exactly the same path input as warm-caches.yml so
+      # a cache hit is a complete install and all three workflows agree on the
+      # cache version as well as its key. Flat repos still use only node_modules.
+      - name: Resolve node_modules cache paths
+        id: node-modules-paths
+        shell: bash
+        run: |
+          paths=node_modules
+          if node -e 'const w = require("./package.json").workspaces; const p = Array.isArray(w) ? w : w?.packages; process.exit(Array.isArray(p) && p.length > 0 ? 0 : 1)'; then
+            paths+=$'\n**/*/node_modules\n!**/node_modules/**/node_modules'
+          fi
+          {
+            echo 'paths<<EOF'
+            echo "$paths"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       # Same node_modules cache the PR preview reads, written on the default
       # branch by warm-caches.yml. Restore-only for the same reason: this job
       # runs from the default branch, where the warm workflow is the writer.
@@ -105,7 +123,7 @@ jobs:
         id: node-modules
         uses: actions/cache/restore@v4
         with:
-          path: node_modules
+          path: ${{ steps.node-modules-paths.outputs.paths }}
           key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'patches/**') }}
 
       - name: Install dependencies

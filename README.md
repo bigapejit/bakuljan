@@ -36,7 +36,7 @@ the short list of pastes only the owner can do (secrets, Convex dashboard).
 | `agent-promote-queued.yml` | An issue closes → flips its unblocked `agent:queued` dependents to `agent:implement` | `issues: [closed]` |
 | `expo-pr-preview.yml` | Publishes an EAS update per push to a non-draft PR, with a Convex preview backend when the PR needs one | `pull_request: [opened, synchronize, reopened, ready_for_review, labeled]` |
 | `expo-review-main-update.yml` | Publishes the default branch to a fixed EAS channel | `workflow_dispatch` |
-| `warm-caches.yml` | Writes the `node_modules` and Metro caches the two Expo workflows read | `push: [main]` + `workflow_dispatch` |
+| `warm-caches.yml` | Writes the root/workspace `node_modules` and Metro caches the two Expo workflows read | `push: [main]` + `workflow_dispatch` |
 
 The triggers stay in the caller: a called workflow reads the *caller's* event
 context, so the label checks and the draft guard inside these files work
@@ -206,4 +206,5 @@ suppressed default token, which is the same silent stall by another route.
   saved on a branch is visible to that branch and its children only. Every agent
   PR is a branch born and merged the same day, so `warm-caches.yml` is the only
   writer and the two Expo workflows only restore. The cache keys are a cross-file
-  contract: change one and change all three.
+  contract: change one and change all three. Repositories that declare workspaces
+  cache every `node_modules` tree; flat repositories retain the root-only cache.
