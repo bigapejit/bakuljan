@@ -7,12 +7,48 @@
 
 <h1 align="center">bakuljan</h1>
 
-Reusable CI for agent-driven Expo/Convex repos: the label-an-issue-get-a-PR loop,
-and the scan-a-QR-to-review loop, defined once and called from every app repo.
+An open-source **GitHub Actions kit for running coding agents AFK** (away from
+keyboard). Write a clear GitHub issue, add `agent:implement`, and let a remote
+agent build the change and open a pull request while your own machine is off.
 
-This repo is **public and holds no secrets, ever**. Reusable workflows run in the
-*caller's* context, so a private app repo passes `secrets: inherit` and its own
-`CLAUDE_CODE_OAUTH_TOKEN`, `EXPO_TOKEN`, `AGENT_PAT` and friends never leave it.
+I built and use this kit across my app repositories so implementation, review,
+and preview jobs run on GitHub rather than tying up my computer. The reusable
+workflows include agent implementation and review, branch updates, and Expo/Convex
+previews. Define them once and call them from each app repo.
+
+Inspired by [Matt Pocock](https://github.com/mattpocock)'s approach to AFK coding
+agents. The agent harness uses his
+[Sandcastle library](https://github.com/mattpocock/sandcastle); see
+[credits](#credits) below.
+
+## From ticket to pull request
+
+1. **Build out the ticket.** Describe the problem, desired behavior, acceptance
+   criteria, and constraints in a GitHub issue in your app repo.
+2. **Dispatch the agent.** Add `agent:implement`. The caller workflow checks
+   for blockers and an existing PR, then creates an `agent/issue-*` branch.
+3. **Work remotely.** GitHub Actions checks out the app and this kit, installs
+   dependencies, and runs the Claude Code agent through Sandcastle. It reads
+   the ticket and repo context, implements the change, and commits its work.
+4. **Review the result.** The workflow pushes the branch, opens a draft PR,
+   and requests the automated review workflow. You review the result before
+   merging; configured Expo workflows can also publish a preview for testing.
+
+For larger tickets, the PRD workflow works through sub-issues on a shared
+branch. Other workflows address PR feedback, update a branch, and promote
+queued issues when their blockers close.
+
+### Where the agent runs
+
+The agent workflows use **GitHub-hosted `ubuntu-latest` runners**, so your local
+machine does not need to stay running after dispatch. The current harness uses
+Sandcastle's `noSandbox()` provider: the remote Actions runner is the execution
+environment, with no additional Docker sandbox around the agent. The Dockerfile
+in `sandcastle/` is not used by these workflows.
+
+This public repo stores the kit code, not app credentials. Reusable workflows run
+in the *caller's* context; `secrets: inherit` makes that app repo's credentials
+available to its workflow run, including the agent and integration steps.
 Public is also the only shape that works without a GitHub organization: a private
 repo cannot be called from another private repo on a personal account.
 
@@ -207,3 +243,18 @@ suppressed default token, which is the same silent stall by another route.
   PR is a branch born and merged the same day, so `warm-caches.yml` is the only
   writer and the two Expo workflows only restore. The cache keys are a cross-file
   contract: change one and change all three.
+
+## Credits
+
+- **[Matt Pocock](https://github.com/mattpocock):** inspiration for the AFK agent
+  approach of preparing a ticket and handing implementation to a coding agent.
+- **[Sandcastle](https://github.com/mattpocock/sandcastle):** Matt Pocock's
+  TypeScript library used by this kit to invoke and orchestrate agents. bakuljan
+  adds reusable GitHub Actions workflows, app setup conventions, and preview
+  integration around that library.
+
+## License
+
+Copyright (c) 2026 Andrew Putilin. Licensed under the [MIT License](LICENSE).
+Sandcastle and other dependencies retain their own licenses and copyright
+notices.
