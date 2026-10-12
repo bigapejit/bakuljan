@@ -1,0 +1,97 @@
+name: Web check
+
+# Reusable web workspace gate for caller repositories.
+# Installs at the root, restores workspace-aware dependency caches, and runs
+# the workspace's typecheck, lint, tests and production build. The caller is
+# build-pro-v4's .github/workflows/web-check.yml.
+#
+# Runs a workspace web app's own gate: install at the root (workspaces), then
+# `npm run -w <workspace> typecheck|lint|test|build`. The caller owns the
+# trigger and its paths:
+#
+#   on:
+#     pull_request:
+#       paths: ["apps/web/**", "src/lib/**", "convex/**", "package.json", "package-lock.json", ...]
+#
+# No secrets are read: `next build` in the web app forces dynamic rendering
+# and only checks its env on Vercel (VERCEL_ENV), so it builds with none.
+
+on:
+  workflow_call:
+    inputs:
+      package-manager:
+        description: "npm only for now: the -w workspace flag below is npm's."
+        type: string
+        default: npm
+      node-version:
+        description: "Node version; part of the node_modules cache key, so it must match warm-caches."
+        type: string
+        default: "22"
+      workspace:
+        description: "The workspace name (package.json `name`) of the web app."
+        type: string
+        default: web
+
+jobs:
+  check:
+    name: Typecheck, lint, test and build the web app
+    runs-on: ubuntu-latest
+    concurrency:
+      group: web-check-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    env:
+      WS: ${{ inputs.workspace }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+
+      # The same workspace-aware paths and key as warm-caches.yml, so a
+      # main-warmed node_modules is reused here.
+      - name: Resolve node_modules cache paths
+        id: node-modules-paths
+        shell: bash
+        run: |
+          paths=node_modules
+          if node -e 'const w = require("./package.json").workspaces; const p = Array.isArray(w) ? w : w?.packages; process.exit(Array.isArray(p) && p.length > 0 ? 0 : 1)'; then
+            paths+=$'\n**/*/node_modules\n!**/node_modules/**/node_modules'
+          fi
+          {
+            echo 'paths<<EOF'
+            echo "$paths"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore node_modules
+        id: node-modules
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.node-modules-paths.outputs.paths }}
+          key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'patches/**') }}
+
+      - name: Install dependencies
+        if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --fund=false
+
+      # `typecheck` is `next typegen && tsc --noEmit` in the web app: it
+      # resolves with the web app's own paths, which is the check that a
+      # src/lib file or a Convex return type still compiles for the web.
+      - name: Typecheck
+        run: npm run -w "$WS" typecheck
+
+      - name: Lint
+        run: npm run -w "$WS" lint
+
+      - name: Test
+        run: npm run -w "$WS" test
+
+      - name: Build
+        run: npm run -w "$WS" build
