@@ -78,8 +78,9 @@ defeats the kit. GitHub Actions stays the engine.
   branch is visible to that branch and its children only; caches saved on the
   default branch are visible repo-wide. Every agent PR is a branch born and
   merged the same day, so a preview can never warm itself. `warm-caches.yml` runs
-  on every push to `main`, saves `node_modules` keyed on the lockfile plus
-  `patches/`, bundles once with `expo export`, and saves Metro's transform cache;
+  on every push to `main`, saves the root and, when declared, workspace
+  `node_modules` trees keyed on the lockfile plus `patches/`, bundles once with
+  `expo export`, and saves Metro's transform cache;
   the preview job (and `expo-review-main-update.yml`) restore both and never
   save. eas-cli moved into the lockfile as a pinned devDependency, so it rides
   the same `node_modules` cache instead of being reinstalled by an action whose
