@@ -16,6 +16,16 @@ describe("the review gate contract", () => {
     expect(preview).toContain("github.event.label.name == 'review:clean'");
   });
 
+  it("marks a commit cleared only after its builds started, so a failed start is retried", () => {
+    // A green status is what stops a second start. Set before the label went
+    // on, an expired AGENT_PAT left PRs green with nothing built (frsg-app #540).
+    expect(gate.indexOf("name: Mark the commit cleared")).toBeGreaterThan(
+      gate.indexOf("name: Start the Vercel preview"),
+    );
+    expect(gate).toContain("if: failure() && steps.decide.outputs.go == 'true'");
+    expect(gate).toContain("-f state=failure");
+  });
+
   it("runs the verdict script straight from the sparse kit checkout", () => {
     expect(gate).toContain("sparse-checkout: sandcastle/review-gate");
     expect(gate).toContain(
