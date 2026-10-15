@@ -202,6 +202,17 @@ out of its way to avoid.
 The `EXPO_PUBLIC_*` values may be repository *variables* instead of secrets; the
 kit reads `secrets.X || vars.X`.
 
+To save a secret into every repo that runs the kit at once, typically a renewed
+`AGENT_PAT`, run `scripts/share-secret.sh` yourself in a terminal (Git Bash on
+Windows):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/bigapejit/bakuljan/main/scripts/share-secret.sh) AGENT_PAT
+```
+
+It asks for the value without echoing it. For an `AGENT_PAT`, it checks the
+scopes and push access to every repo before it changes anything.
+
 Three more `EXPO_PUBLIC_*` names are optional, forwarded into the bundle by the
 preview and review-main workflows only when the caller repo actually holds a
 value: `EXPO_PUBLIC_CONVEX_SITE_URL` (for an app that does not derive the
