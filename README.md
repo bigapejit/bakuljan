@@ -73,6 +73,7 @@ the short list of pastes only the owner can do (secrets, Convex dashboard).
 | `expo-pr-preview.yml` | Publishes an EAS update per push to a non-draft PR, with a Convex preview backend when the PR needs one | `pull_request: [opened, synchronize, reopened, ready_for_review, labeled]` |
 | `expo-review-main-update.yml` | Publishes the default branch to a fixed EAS channel | `workflow_dispatch` |
 | `warm-caches.yml` | Writes the root/workspace `node_modules` and Metro caches the two Expo workflows read | `push: [main]` + `workflow_dispatch` |
+| `review-gate.yml` | Holds a PR's previews and builds until Codex reviews its head commit clean, then starts them once for that commit: a `review:clean` label for Actions workflows, a forced deployment for Vercel. A pending "Review gate" status on every push says what they wait for | `pull_request: [opened, synchronize, reopened]` + `issue_comment: [created, edited]` + `workflow_dispatch` |
 
 The triggers stay in the caller: a called workflow reads the *caller's* event
 context, so the label checks and the draft guard inside these files work

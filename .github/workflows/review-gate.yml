@@ -1,0 +1,212 @@
+name: Review gate
+
+# Reusable. Holds a pull request's expensive builds (Expo previews, native
+# builds, Vercel previews) until Codex has reviewed its head commit and found
+# nothing, then starts them once, for exactly that commit. Agents push as often
+# as they like; nothing here asks for reviews or limits rounds.
+#
+# The caller keeps the triggers:
+#
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened]
+#     issue_comment:
+#       types: [created, edited]
+#     workflow_dispatch:
+#       inputs:
+#         pr:
+#           description: Pull request to build now, without a clean Codex review
+#           required: true
+#
+# What it does:
+#
+# - On every push (`waiting`): a pending "Review gate" status on the new head,
+#   saying what the builds are waiting for, and the review:clean label comes
+#   off. That status is how an agent wondering why no preview ran finds out.
+# - When Codex's summary comment turns Completed (`clean`): asks codexVerdict
+#   (sandcastle/review-gate) about the PR's current head. On a clean verdict,
+#   the status goes green and the builds start:
+#   - review:clean is put on the PR with AGENT_PAT (an event raised by
+#     GITHUB_TOKEN would start no workflow). Gated workflows run on that
+#     `labeled` event, which carries the full pull_request payload.
+#   - With vercel-project-id set and a VERCEL_TOKEN secret, REVIEW_GATE_SHA is
+#     set for the branch's previews and Vercel is asked to build that commit.
+#     The repo's Ignored Build Step skips any preview whose commit is not
+#     REVIEW_GATE_SHA (see frsg-app's .github/scripts/vercel-review-gate.sh).
+# - By hand (workflow_dispatch): the same, for a head commit Codex did not
+#   clear. The status says so.
+#
+# A green status on a commit is the record that its builds started, so a
+# second Completed edit for the same commit starts nothing. A new push gets a
+# new commit and a new status: nothing carries over.
+
+on:
+  workflow_call:
+    inputs:
+      codex-login:
+        description: "Login of the Codex GitHub app's comments, reviews and reactions."
+        type: string
+        default: "chatgpt-codex-connector[bot]"
+      vercel-project-id:
+        description: "Vercel project (id or name) whose previews wait for the gate. Empty: Vercel is left alone."
+        type: string
+        default: ""
+      vercel-team-id:
+        description: "Vercel team that owns vercel-project-id."
+        type: string
+        default: ""
+      kit-ref:
+        description: "Ref of bigapejit/bakuljan the gate's script is run from."
+        type: string
+        default: main
+
+env:
+  CONTEXT: Review gate
+
+jobs:
+  waiting:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Mark the new head as waiting for Codex
+        run: |
+          gh api "repos/$GH_REPO/statuses/$SHA" -f state=pending -f context="$CONTEXT" \
+            -f description="Previews and builds start when Codex reviews ${SHA::7} clean" >/dev/null
+          gh api --method DELETE "repos/$GH_REPO/issues/$PR_NUMBER/labels/review:clean" >/dev/null 2>&1 || true
+
+  clean:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+        github.event.comment.user.login == inputs.codex-login &&
+        contains(github.event.comment.body, '<!-- codex-pull-request-review-summary -->') &&
+        contains(github.event.comment.body, '**Completed**'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: review-gate-${{ github.event.issue.number || github.event.inputs.pr }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: read
+      issues: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.issue.number || github.event.inputs.pr }}
+      CODEX_LOGIN: ${{ inputs.codex-login }}
+    steps:
+      - name: Check out the gate's script from the kit
+        uses: actions/checkout@v4
+        with:
+          repository: bigapejit/bakuljan
+          ref: ${{ inputs.kit-ref }}
+          sparse-checkout: sandcastle/review-gate
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Ask whether Codex reviewed the head commit clean
+        id: verdict
+        if: github.event_name == 'issue_comment'
+        run: node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON sandcastle/review-gate/review-gate.ts
+
+      - name: Read the head commit
+        id: head
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          gh api "repos/$GH_REPO/pulls/$PR_NUMBER" \
+            --jq '"sha=\(.head.sha)\nbranch=\(.head.ref)"' >> "$GITHUB_OUTPUT"
+
+      - name: Skip a commit whose builds already started
+        id: decide
+        env:
+          CLEAN: ${{ steps.verdict.outputs.clean }}
+          SHA: ${{ steps.verdict.outputs.sha || steps.head.outputs.sha }}
+          BRANCH: ${{ steps.verdict.outputs.branch || steps.head.outputs.branch }}
+          REASON: ${{ steps.verdict.outputs.reason }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            echo "description=Builds started by @$ACTOR without a clean Codex review" >> "$GITHUB_OUTPUT"
+          elif [ "$CLEAN" = true ]; then
+            echo "description=$REASON: previews and builds started" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::$REASON. Nothing started."
+            exit 0
+          fi
+          state=$(gh api "repos/$GH_REPO/commits/$SHA/status" \
+            --jq "[.statuses[] | select(.context == \"$CONTEXT\")][0].state // \"\"")
+          if [ "$state" = success ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
+            echo "::notice::Builds for ${SHA::7} already started."
+            exit 0
+          fi
+          echo "go=true" >> "$GITHUB_OUTPUT"
+
+      - name: Mark the commit cleared
+        if: steps.decide.outputs.go == 'true'
+        env:
+          SHA: ${{ steps.decide.outputs.sha }}
+          DESCRIPTION: ${{ steps.decide.outputs.description }}
+        run: |
+          gh api "repos/$GH_REPO/statuses/$SHA" -f state=success -f context="$CONTEXT" \
+            -f description="${DESCRIPTION:0:140}" >/dev/null
+
+      # Off and on again: GitHub raises `labeled` only when the label is added.
+      - name: Start the gated workflows
+        if: steps.decide.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::AGENT_PAT is not set. A label added with GITHUB_TOKEN starts no workflow, so nothing would build."
+            exit 1
+          fi
+          gh api "repos/$GH_REPO/labels/review:clean" >/dev/null 2>&1 ||
+            gh api "repos/$GH_REPO/labels" -f name=review:clean -f color=0e8a16 \
+              -f description="Codex reviewed the head commit clean; its previews and builds started" >/dev/null
+          gh api --method DELETE "repos/$GH_REPO/issues/$PR_NUMBER/labels/review:clean" >/dev/null 2>&1 || true
+          gh api "repos/$GH_REPO/issues/$PR_NUMBER/labels" -f "labels[]=review:clean" >/dev/null
+
+      - name: Start the Vercel preview
+        if: steps.decide.outputs.go == 'true' && inputs.vercel-project-id != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PROJECT: ${{ inputs.vercel-project-id }}
+          TEAM: ${{ inputs.vercel-team-id }}
+          REPO_ID: ${{ github.event.repository.id }}
+          SHA: ${{ steps.decide.outputs.sha }}
+          BRANCH: ${{ steps.decide.outputs.branch }}
+        run: |
+          set -euo pipefail
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::VERCEL_TOKEN is not set, so the Vercel preview for ${SHA::7} was not started."
+            exit 1
+          fi
+          vercel() {
+            curl -sS --fail-with-body -X POST -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" "https://api.vercel.com/$1&teamId=$TEAM" -d "$2" >/dev/null
+          }
+          # Read by the Ignored Build Step: only this commit of this branch builds.
+          vercel "v10/projects/$PROJECT/env?upsert=true" "$(jq -nc --arg sha "$SHA" --arg branch "$BRANCH" \
+            '{key: "REVIEW_GATE_SHA", value: $sha, type: "plain", target: ["preview"], gitBranch: $branch}')"
+          # forceNew: the push already made a (skipped) deployment of this commit,
+          # and Vercel would otherwise hand that one back.
+          vercel "v13/deployments?forceNew=1&skipAutoDetectionConfirmation=1" "$(jq -nc \
+            --arg project "$PROJECT" --arg branch "$BRANCH" --arg sha "$SHA" --argjson repo "$REPO_ID" \
+            '{name: $project, project: $project, gitSource: {type: "github", repoId: $repo, ref: $branch, sha: $sha}}')"
+          echo "Vercel preview of ${SHA::7} started."
