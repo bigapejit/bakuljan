@@ -9,7 +9,7 @@ name: Review gate
 #
 #   on:
 #     pull_request:
-#       types: [opened, synchronize, reopened]
+#       types: [opened, synchronize, reopened, closed]
 #     issue_comment:
 #       types: [created, edited]
 #     workflow_dispatch:
@@ -35,6 +35,8 @@ name: Review gate
 #     REVIEW_GATE_SHA (see frsg-app's .github/scripts/vercel-review-gate.sh).
 # - By hand (workflow_dispatch): the same, for a head commit Codex did not
 #   clear. The status says so.
+# - When the PR closes (`forget`): the branch's REVIEW_GATE_SHA goes, so the
+#   Vercel project does not collect one per branch.
 #
 # A green status on a commit is the record that its builds started, so a
 # second Completed edit for the same commit starts nothing. A new push gets a
@@ -65,7 +67,7 @@ env:
 
 jobs:
   waiting:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -194,8 +196,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::error::VERCEL_TOKEN is not set, so the Vercel preview for ${SHA::7} was not started."
-            exit 1
+            echo "::warning::VERCEL_TOKEN is not set, so the Vercel preview for ${SHA::7} was not started."
+            exit 0
           fi
           vercel() {
             curl -sS --fail-with-body -X POST -H "Authorization: Bearer $VERCEL_TOKEN" \
@@ -210,3 +212,25 @@ jobs:
             --arg project "$PROJECT" --arg branch "$BRANCH" --arg sha "$SHA" --argjson repo "$REPO_ID" \
             '{name: $project, project: $project, gitSource: {type: "github", repoId: $repo, ref: $branch, sha: $sha}}')"
           echo "Vercel preview of ${SHA::7} started."
+
+  forget:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && inputs.vercel-project-id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      PROJECT: ${{ inputs.vercel-project-id }}
+      TEAM: ${{ inputs.vercel-team-id }}
+      BRANCH: ${{ github.event.pull_request.head.ref }}
+    steps:
+      - name: Forget the branch's cleared commit on Vercel
+        if: env.VERCEL_TOKEN != ''
+        run: |
+          set -euo pipefail
+          api="https://api.vercel.com/v9/projects/$PROJECT/env"
+          ids=$(curl -sS --fail-with-body -H "Authorization: Bearer $VERCEL_TOKEN" "$api?teamId=$TEAM" |
+            jq -r --arg branch "$BRANCH" '.envs[] | select(.key == "REVIEW_GATE_SHA" and .gitBranch == $branch) | .id')
+          for id in $ids; do
+            curl -sS --fail-with-body -X DELETE -H "Authorization: Bearer $VERCEL_TOKEN" "$api/$id?teamId=$TEAM" >/dev/null
+          done
