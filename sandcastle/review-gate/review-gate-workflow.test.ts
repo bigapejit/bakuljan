@@ -39,6 +39,24 @@ describe("the review gate contract", () => {
     expect(gate).toContain("contains(github.event.comment.body, '**Completed**')");
   });
 
+  it("builds every push to a PR it has opened, without another review", () => {
+    // Codex never reviews a push on its own. Asking every pushed commit to be
+    // reviewed again held previews behind a review nobody had requested
+    // (frsg-app #616, 31 minutes).
+    const latched = "contains(github.event.pull_request.labels.*.name, 'review:clean')";
+    expect(gate).toContain(`!${latched}`);
+    expect(gate).toContain(
+      `(github.event.action == 'synchronize' || github.event.action == 'reopened') &&\n        ${latched}`,
+    );
+    // The label is what keeps it open, so a push must not take it off.
+    const waiting = gate.slice(gate.indexOf("  waiting:"), gate.indexOf("  clean:"));
+    expect(waiting).not.toContain("labels/review:clean");
+    // One queue per PR, whichever event woke the gate.
+    expect(gate).toContain(
+      "group: review-gate-${{ github.event.issue.number || github.event.inputs.pr || github.event.pull_request.number }}",
+    );
+  });
+
   it("asks Vercel for exactly the cleared commit, past its own dedupe", () => {
     expect(gate).toContain("key: \"REVIEW_GATE_SHA\"");
     expect(gate).toContain("v13/deployments?forceNew=1");

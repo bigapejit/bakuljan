@@ -1,9 +1,16 @@
 name: Review gate
 
 # Reusable. Holds a pull request's expensive builds (Expo previews, native
-# builds, Vercel previews) until Codex has reviewed its head commit and found
-# nothing, then starts them once, for exactly that commit. Agents push as often
-# as they like; nothing here asks for reviews or limits rounds.
+# builds, Vercel previews) until a Codex review of it comes back with no P0 or
+# P1 finding, then builds its head, and from then on every push to it. Agents
+# push as often as they like; nothing here asks for reviews or limits rounds.
+#
+# P2s hold nothing. Codex reads the whole diff afresh each round and nearly
+# always finds another one, so waiting for no findings at all kept agents in
+# fix-and-re-review loops for hours on PRs that were ready. And Codex reviews
+# only when a PR opens or someone comments `@codex review`, never on a push, so
+# a gate that wanted each pushed commit reviewed waited on a review nobody had
+# asked for.
 #
 # The caller keeps the triggers:
 #
@@ -15,32 +22,35 @@ name: Review gate
 #     workflow_dispatch:
 #       inputs:
 #         pr:
-#           description: Pull request to build now, without a clean Codex review
+#           description: Pull request to build now, without a Codex review clearing it
 #           required: true
 #
 # What it does:
 #
-# - On every push (`waiting`): a pending "Review gate" status on the new head,
-#   saying what the builds are waiting for, and the review:clean label comes
-#   off. That status is how an agent wondering why no preview ran finds out.
+# - On a push to a PR the gate has not opened (`waiting`): a pending "Review
+#   gate" status on the new head, saying what the builds are waiting for. That
+#   status is how an agent wondering why no preview ran finds out.
 # - When Codex's summary comment turns Completed (`clean`): asks codexVerdict
-#   (sandcastle/review-gate) about the PR's current head. On a clean verdict,
-#   the status goes green and the builds start:
+#   (sandcastle/review-gate) about Codex's latest review of the PR. With no P0
+#   or P1 in it, the gate opens: the PR's current head goes green and its
+#   builds start:
 #   - review:clean is put on the PR with AGENT_PAT (an event raised by
 #     GITHUB_TOKEN would start no workflow). Gated workflows run on that
-#     `labeled` event, which carries the full pull_request payload.
+#     `labeled` event, which carries the full pull_request payload. The label
+#     stays on as the record that the gate is open for this PR.
 #   - With vercel-project-id set and a VERCEL_TOKEN secret, REVIEW_GATE_SHA is
 #     set for the branch's previews and Vercel is asked to build that commit.
 #     The repo's Ignored Build Step skips any preview whose commit is not
 #     REVIEW_GATE_SHA (see frsg-app's .github/scripts/vercel-review-gate.sh).
-# - By hand (workflow_dispatch): the same, for a head commit Codex did not
-#   clear. The status says so.
+# - On a push to a PR the gate has opened (`clean` too): the same builds start
+#   for the new head straight away, with no review.
+# - By hand (workflow_dispatch): the same, for a PR Codex did not clear. The
+#   status says so.
 # - When the PR closes (`forget`): the branch's REVIEW_GATE_SHA goes, so the
 #   Vercel project does not collect one per branch.
 #
 # A green status on a commit is the record that its builds started, so a
-# second Completed edit for the same commit starts nothing. A new push gets a
-# new commit and a new status: nothing carries over.
+# second Completed edit for the same commit starts nothing.
 
 on:
   workflow_call:
@@ -67,23 +77,22 @@ env:
 
 jobs:
   waiting:
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    if: |
+      github.event_name == 'pull_request' && github.event.action != 'closed' &&
+      !contains(github.event.pull_request.labels.*.name, 'review:clean')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       statuses: write
-      pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
       SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - name: Mark the new head as waiting for Codex
         run: |
           gh api "repos/$GH_REPO/statuses/$SHA" -f state=pending -f context="$CONTEXT" \
-            -f description="Previews and builds start when Codex reviews ${SHA::7} clean" >/dev/null
-          gh api --method DELETE "repos/$GH_REPO/issues/$PR_NUMBER/labels/review:clean" >/dev/null 2>&1 || true
+            -f description="Builds start once a Codex review of this PR has no P1. Codex reviews on PR open or @codex review" >/dev/null
 
   clean:
     if: |
@@ -91,11 +100,14 @@ jobs:
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
         github.event.comment.user.login == inputs.codex-login &&
         contains(github.event.comment.body, '<!-- codex-pull-request-review-summary -->') &&
-        contains(github.event.comment.body, '**Completed**'))
+        contains(github.event.comment.body, '**Completed**')) ||
+      (github.event_name == 'pull_request' &&
+        (github.event.action == 'synchronize' || github.event.action == 'reopened') &&
+        contains(github.event.pull_request.labels.*.name, 'review:clean'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
-      group: review-gate-${{ github.event.issue.number || github.event.inputs.pr }}
+      group: review-gate-${{ github.event.issue.number || github.event.inputs.pr || github.event.pull_request.number }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -105,7 +117,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.issue.number || github.event.inputs.pr }}
+      PR_NUMBER: ${{ github.event.issue.number || github.event.inputs.pr || github.event.pull_request.number }}
       CODEX_LOGIN: ${{ inputs.codex-login }}
     steps:
       - name: Check out the gate's script from the kit
@@ -120,14 +132,14 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Ask whether Codex reviewed the head commit clean
+      - name: Ask whether Codex's latest review holds the builds
         id: verdict
         if: github.event_name == 'issue_comment'
         run: node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON sandcastle/review-gate/review-gate.ts
 
       - name: Read the head commit
         id: head
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'issue_comment'
         run: |
           gh api "repos/$GH_REPO/pulls/$PR_NUMBER" \
             --jq '"sha=\(.head.sha)\nbranch=\(.head.ref)"' >> "$GITHUB_OUTPUT"
@@ -135,7 +147,7 @@ jobs:
       - name: Skip a commit whose builds already started
         id: decide
         env:
-          CLEAN: ${{ steps.verdict.outputs.clean }}
+          CLEAR: ${{ steps.verdict.outputs.clear }}
           SHA: ${{ steps.verdict.outputs.sha || steps.head.outputs.sha }}
           BRANCH: ${{ steps.verdict.outputs.branch || steps.head.outputs.branch }}
           REASON: ${{ steps.verdict.outputs.reason }}
@@ -144,8 +156,10 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            echo "description=Builds started by @$ACTOR without a clean Codex review" >> "$GITHUB_OUTPUT"
-          elif [ "$CLEAN" = true ]; then
+            echo "description=Builds started by @$ACTOR without a Codex review clearing them" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            echo "description=Codex cleared this PR earlier, so every push builds: previews and builds started" >> "$GITHUB_OUTPUT"
+          elif [ "$CLEAR" = true ]; then
             echo "description=$REASON: previews and builds started" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::$REASON. Nothing started."
@@ -175,7 +189,7 @@ jobs:
           fi
           gh api "repos/$GH_REPO/labels/review:clean" >/dev/null 2>&1 ||
             gh api "repos/$GH_REPO/labels" -f name=review:clean -f color=0e8a16 \
-              -f description="Codex reviewed the head commit clean; its previews and builds started" >/dev/null
+              -f description="A Codex review left no P1, so every push to this PR builds" >/dev/null
           gh api --method DELETE "repos/$GH_REPO/issues/$PR_NUMBER/labels/review:clean" >/dev/null 2>&1 || true
           gh api "repos/$GH_REPO/issues/$PR_NUMBER/labels" -f "labels[]=review:clean" >/dev/null
 
@@ -226,7 +240,7 @@ jobs:
           SHA: ${{ steps.decide.outputs.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          why=$(cat "$RUNNER_TEMP/why" 2>/dev/null || echo "Codex found nothing, but starting the builds failed")
+          why=$(cat "$RUNNER_TEMP/why" 2>/dev/null || echo "The gate is open, but starting the builds failed")
           gh api "repos/$GH_REPO/statuses/$SHA" -f state=failure -f context="$CONTEXT" \
             -f target_url="$RUN_URL" -f description="${why:0:140}" >/dev/null
 

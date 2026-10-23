@@ -80,8 +80,9 @@ on:
       wait-for-review:
         description: >-
           Publish only when review-gate.yml puts review:clean on the PR, which
-          it does once Codex reviews the head commit clean, instead of on every
-          push to a ready PR. The caller adds `labeled` to its trigger types
+          it does once a Codex review leaves no P1 and again on each push after
+          that, instead of on every push to a ready PR before Codex has looked.
+          The caller adds `labeled` to its trigger types
           (it already has it for preview:force). preview:force still publishes
           when it is added.
         type: boolean
@@ -107,8 +108,8 @@ jobs:
     # labels (agent:* workflow state) would otherwise re-bundle identical code.
     #
     # With wait-for-review, the review gate replaces both: the preview is
-    # published once per commit Codex reviewed clean, on review:clean, rather
-    # than on every push during a review-and-fix loop.
+    # published on review:clean, which the gate adds once Codex clears the PR
+    # and again for each push after that.
     if: |
       (
         inputs.wait-for-review &&
