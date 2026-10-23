@@ -158,7 +158,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             echo "description=Builds started by @$ACTOR without a Codex review clearing them" >> "$GITHUB_OUTPUT"
           elif [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            echo "description=Codex cleared this PR earlier, so every push builds: previews and builds started" >> "$GITHUB_OUTPUT"
+            echo "description=The gate opened for this PR earlier, so every push builds: previews and builds started" >> "$GITHUB_OUTPUT"
           elif [ "$CLEAR" = true ]; then
             echo "description=$REASON: previews and builds started" >> "$GITHUB_OUTPUT"
           else
