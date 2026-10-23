@@ -32,7 +32,10 @@
   "reviews": [
    {
     "commitId": "81e437f4ee594d2f64ee5b608185c25994209627",
-    "submittedAt": "2026-10-13T06:21:07Z"
+    "submittedAt": "2026-10-13T06:21:07Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Update the end-to-end expected signed URL**"
+    ]
    }
   ],
   "reactions": [
@@ -52,51 +55,103 @@
   "reviews": [
    {
     "commitId": "4333db9d05ddd9e4dde7b45c5821dcb523b7783d",
-    "submittedAt": "2026-10-13T07:08:25Z"
+    "submittedAt": "2026-10-13T07:08:25Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Re-pin a promoted proxy to the video's start pose**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Keep a place for unlocated Fly here close-ups**"
+    ]
    },
    {
     "commitId": "907a067313b281b574efccdf27a239f7c4dcc2fc",
-    "submittedAt": "2026-10-13T07:16:44Z"
+    "submittedAt": "2026-10-13T07:16:44Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Capture each photo's pose when the shutter fires**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Preserve native shots before the first store insert completes**"
+    ]
    },
    {
     "commitId": "99e2500faf6c433f641276c39a898a2af579594c",
-    "submittedAt": "2026-10-13T07:24:45Z"
+    "submittedAt": "2026-10-13T07:24:45Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Wait for the stopped video's file before ending**",
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Stop recording on alternate route exits**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Retain a start pose for every pending video**"
+    ]
    },
    {
     "commitId": "091d19355505fdc8dc799906be13fa6a3ce39f93",
-    "submittedAt": "2026-10-13T07:36:57Z"
+    "submittedAt": "2026-10-13T07:36:57Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Wait for the stopped recording's own file**",
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Require every captured close-up before completing the copy**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Scope close-up exclusions to the relevant camera files**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Queue poses for all pending photo files**"
+    ]
    },
    {
     "commitId": "9e4e158c50a036e4d0c9c9aa33f8fe01b77b9cd7",
-    "submittedAt": "2026-10-13T07:44:04Z"
+    "submittedAt": "2026-10-13T07:44:04Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Re-list the selected storage before copying**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Discard poses for failed shutter commands**"
+    ]
    },
    {
     "commitId": "fdb1593a77c5e538e14a72d52129de901158f781",
-    "submittedAt": "2026-10-13T07:53:35Z"
+    "submittedAt": "2026-10-13T07:53:35Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Prefer the storage containing uncopied close-ups**",
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Prevent timed-out mode switches from starting recordings late**"
+    ]
    },
    {
     "commitId": "f3febdeda7efdbb8554735347e895caa2472a33d",
-    "submittedAt": "2026-10-13T08:04:17Z"
+    "submittedAt": "2026-10-13T08:04:17Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Refuse sessions that begin during an active recording**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Consume the stale-index guard after the replay callback**"
+    ]
    },
    {
     "commitId": "e7f4a27f93f1daa8217e639c5293284bcaded342",
-    "submittedAt": "2026-10-13T08:11:58Z"
+    "submittedAt": "2026-10-13T08:11:58Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Distinguish close-ups that reuse a camera index**",
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Exclude recently cleaned close-ups from map retries**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Prevent stale cleanup from ending a resumed session**"
+    ]
    },
    {
     "commitId": "0e35dbf80e095dfd7efbe5196df8bb49435ad9e8",
-    "submittedAt": "2026-10-13T08:20:08Z"
+    "submittedAt": "2026-10-13T08:20:08Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Defer mapping copies until the shot session ends**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Do not record unsupported RAW files as close-ups**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Remember that the controller already fired the shutter**"
+    ]
    },
    {
     "commitId": "ed84a1c8992796d3cdb6b4106c8225452ef9c259",
-    "submittedAt": "2026-10-13T08:29:15Z"
+    "submittedAt": "2026-10-13T08:29:15Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Wait for the final split video segment before ending**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Replace the history entry when closing the viewer**"
+    ]
    },
    {
     "commitId": "8fed0f750c2cea47d24f6b86002417db78810fae",
-    "submittedAt": "2026-10-13T08:35:24Z"
+    "submittedAt": "2026-10-13T08:35:24Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Reject per-file deletion for Close-ups Flights**"
+    ]
    },
    {
     "commitId": "cb4296ec0e17eddad2f19832573910e3c2e0b328",
-    "submittedAt": "2026-10-13T08:43:28Z"
+    "submittedAt": "2026-10-13T08:43:28Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Reject close-ups while a paused mission is active**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Frame both the Drone Map and close-up pins**"
+    ]
    }
   ],
   "reactions": []
@@ -126,7 +181,11 @@
   "reviews": [
    {
     "commitId": "67aa0ae6d6a3bd604b98f99568a4bd9dd8229e10",
-    "submittedAt": "2026-10-13T18:37:15Z"
+    "submittedAt": "2026-10-13T18:37:15Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Recover the journal when a camera command is refused**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Report camera preparation failures from Go**"
+    ]
    }
   ],
   "reactions": []
@@ -145,23 +204,47 @@
   "reviews": [
    {
     "commitId": "c37e316324b9b240548c10b66884f81c58828a59",
-    "submittedAt": "2026-10-14T01:45:11Z"
+    "submittedAt": "2026-10-14T01:45:11Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Upload available photos before bailing on missing ones**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Allow a deleted card Flight to be imported again**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Recompute legacy close-up bounds before prefiltering**"
+    ]
    },
    {
     "commitId": "2d671463fd16a662b6e574984ae35e1255a0cc12",
-    "submittedAt": "2026-10-14T01:53:05Z"
+    "submittedAt": "2026-10-14T01:53:05Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Include attached close-up aims in the mapping-flight prefilter**",
+     "**<sub><sub>![P3 Badge](https://img.shields.io/badge/P3-lightgrey?style=flat)</sub></sub>  Report photos uploaded during partial finalization**"
+    ]
    },
    {
     "commitId": "fe8db693447c9e3373b0293516c47c09c337746a",
-    "submittedAt": "2026-10-14T02:00:13Z"
+    "submittedAt": "2026-10-14T02:00:13Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Include mapping Flights reached by attached close-ups**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Abort in-flight XHRs when import is stopped**",
+     "**<sub><sub>![P3 Badge](https://img.shields.io/badge/P3-lightgrey?style=flat)</sub></sub>  Count only photos accepted by addPhotos**"
+    ]
    },
    {
     "commitId": "a4eede5b2a5f4d38c5963088a8a01c54b4e38ef1",
-    "submittedAt": "2026-10-14T02:08:07Z"
+    "submittedAt": "2026-10-14T02:08:07Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Load URL-selected Flights outside the first page**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Identify Marketing photos by Flight and name**",
+     "**<sub><sub>![P3 Badge](https://img.shields.io/badge/P3-lightgrey?style=flat)</sub></sub>  Use addPhotos.added for the import count**"
+    ]
    },
    {
     "commitId": "8e0867fdfc74299fab2a0a0b94b8e6b7bee6b3db",
-    "submittedAt": "2026-10-14T02:15:47Z"
+    "submittedAt": "2026-10-14T02:15:47Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Restrict reopening to SD-card Flights**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Keep the open photo's composite identity**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Preserve card order across parallel reads**"
+    ]
    }
   ],
   "reactions": [
@@ -181,59 +264,107 @@
   "reviews": [
    {
     "commitId": "9faea0c44dc05ae8a976b6de140a9e646e45995c",
-    "submittedAt": "2026-10-14T03:08:51Z"
+    "submittedAt": "2026-10-14T03:08:51Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Let the picker reach photos outside the current Site**"
+    ]
    },
    {
     "commitId": "a8635b810dba5e4537ec1547e1909df74d10a328",
-    "submittedAt": "2026-10-14T03:14:44Z"
+    "submittedAt": "2026-10-14T03:14:44Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Keep proposal scans out of the phone status subscription**"
+    ]
    },
    {
     "commitId": "35e6c394b94cad116012a1f645d93dd0040f4894",
-    "submittedAt": "2026-10-14T03:20:52Z"
+    "submittedAt": "2026-10-14T03:20:52Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Include Drone Map bounds when framing the Roof**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Refresh signed URLs on every Proposal Document query**"
+    ]
    },
    {
     "commitId": "63dfe82513ee1fc447f973c181c9e2ad50d0745d",
-    "submittedAt": "2026-10-14T03:28:14Z"
+    "submittedAt": "2026-10-14T03:28:14Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Preserve photo bounds when hiding the photo layer**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Refresh signed URLs in the Photos library**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Bound the Flights read before building the library**"
+    ]
    },
    {
     "commitId": "897f6a0ce896cadb8cd688e7d3d233469b40d5a1",
-    "submittedAt": "2026-10-14T03:35:43Z"
+    "submittedAt": "2026-10-14T03:35:43Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Bound the deleted-flight scan**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Reconcile local photo refs when server photos disappear**"
+    ]
    },
    {
     "commitId": "acce51787017621ceef1f6eb9636ffe12162ee98",
-    "submittedAt": "2026-10-14T03:43:23Z"
+    "submittedAt": "2026-10-14T03:43:23Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Paginate photo-heavy Solutions before adding the total**"
+    ]
    },
    {
     "commitId": "8af02b15528b74cce3501e475d0766cd910b2e04",
-    "submittedAt": "2026-10-14T03:51:22Z"
+    "submittedAt": "2026-10-14T03:51:22Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Open the pin's displayed cover photo**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Expose photos assigned to other Sites in the picker**"
+    ]
    },
    {
     "commitId": "860518d3808624c4f6a31a377f27e31b1dba372b",
-    "submittedAt": "2026-10-14T03:58:25Z"
+    "submittedAt": "2026-10-14T03:58:25Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Reconcile newly added server photos into local refs**"
+    ]
    },
    {
     "commitId": "d118e6145c5062e00948952ce01cb580872a66be",
-    "submittedAt": "2026-10-14T04:05:42Z"
+    "submittedAt": "2026-10-14T04:05:42Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Track the picker viewer by photo identity**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Render photo captions in the document time zone**"
+    ]
    },
    {
     "commitId": "a88310cf860ae7b2052296587fd4d290fb62690b",
-    "submittedAt": "2026-10-14T04:10:34Z"
+    "submittedAt": "2026-10-14T04:10:34Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Refresh Drone Map URLs with the signed-URL epoch**"
+    ]
    },
    {
     "commitId": "a656e2aa391cd61d4b1aee4c9f69a2261d145c25",
-    "submittedAt": "2026-10-14T04:18:09Z"
+    "submittedAt": "2026-10-14T04:18:09Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Stop reading photos once the library item cap is reached**"
+    ]
    },
    {
     "commitId": "46a5074a24b6ba729564f4ea94ccb7e86d2812e7",
-    "submittedAt": "2026-10-14T04:24:31Z"
+    "submittedAt": "2026-10-14T04:24:31Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Count only displayable photos toward the library cap**"
+    ]
    },
    {
     "commitId": "70f79ba6ed28e42e106cecda2b8b487b2aca5d6f",
-    "submittedAt": "2026-10-14T04:32:24Z"
+    "submittedAt": "2026-10-14T04:32:24Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Bound the sent-Proposal lookup**"
+    ]
    },
    {
     "commitId": "115db4c37ece1205917f237fc507abdb98b0a1fd",
-    "submittedAt": "2026-10-14T04:41:16Z"
+    "submittedAt": "2026-10-14T04:41:16Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Paginate the library instead of truncating older photos**"
+    ]
    }
   ],
   "reactions": []
@@ -267,55 +398,156 @@
   "reviews": [
    {
     "commitId": "b55230d230e4a77da10f90bfb2042ca0b792fc91",
-    "submittedAt": "2026-10-14T17:53:08Z"
+    "submittedAt": "2026-10-14T17:53:08Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Load all map assets instead of capped library snapshots**",
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Reject reverse-geocoding service faults**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Include loose photos in the initial map bounds**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Cancel stale picture lookups after a newer tap**"
+    ]
    },
    {
     "commitId": "0539c779caad534fcfedddcbb3875280bcbf5228",
-    "submittedAt": "2026-10-14T18:03:26Z"
+    "submittedAt": "2026-10-14T18:03:26Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Make the record panel fit narrow viewports**"
+    ]
    },
    {
     "commitId": "1fb1bebd38e3a562ea34ec3d2d6a7d06ff3273f1",
-    "submittedAt": "2026-10-14T18:09:40Z"
+    "submittedAt": "2026-10-14T18:09:40Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Keep Sites without map geometry reachable**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Invalidate picture lookups when closing the panel**"
+    ]
    },
    {
     "commitId": "6284bd75f69deb4b8b6526f3a83ff71f6eae4ef2",
-    "submittedAt": "2026-10-14T18:14:33Z"
+    "submittedAt": "2026-10-14T18:14:33Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Cancel lookups before opening an unplaced Site**"
+    ]
    },
    {
     "commitId": "065f300c00b7d9fe299faaf5ac6bb7a6b6f431dc",
-    "submittedAt": "2026-10-14T18:21:22Z"
+    "submittedAt": "2026-10-14T18:21:22Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Handle failed building lookups for picture taps**"
+    ]
    },
    {
     "commitId": "d866a4c00c6f99d63e31d5698e79e4caf052540c",
-    "submittedAt": "2026-10-14T18:26:51Z"
+    "submittedAt": "2026-10-14T18:26:51Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Prevent saves from replacing a newer map selection**"
+    ]
    },
    {
     "commitId": "0ce2a7367f12c27585517684a44c9aebbc4990c0",
-    "submittedAt": "2026-10-14T18:34:01Z"
+    "submittedAt": "2026-10-14T18:34:01Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Invalidate picture lookups on browser history changes**"
+    ]
    },
    {
     "commitId": "d021a5d5747dba6744d5c93c5f17c0069a95e28d",
-    "submittedAt": "2026-10-14T18:38:25Z"
+    "submittedAt": "2026-10-14T18:38:25Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Include the photo that selected a nearby building**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Deduplicate mapping flights that also contain close-ups**"
+    ]
    },
    {
     "commitId": "85cb3ad08cdc81d75d81381153bee7d71526d2b5",
-    "submittedAt": "2026-10-14T18:44:08Z"
+    "submittedAt": "2026-10-14T18:44:08Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Render loose videos with their media URL**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Honor close-up placement when populating building records**"
+    ]
    },
    {
     "commitId": "db03836552dda799a248e35eb79fc8b58c6c3912",
-    "submittedAt": "2026-10-14T18:49:52Z"
+    "submittedAt": "2026-10-14T18:49:52Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Include all roof geometry in the initial bounds**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Keep coordinate-less Sites in duplicate detection**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Allow quick blank-map taps to close the record**"
+    ]
    },
    {
     "commitId": "f354ead00947ceab437b6fc614abc00169323ffd",
-    "submittedAt": "2026-10-14T18:57:13Z"
+    "submittedAt": "2026-10-14T18:57:13Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Match legacy Sites using the building footprint**"
+    ]
    },
    {
     "commitId": "dd77236ea6a1aa5f46721c8133d710e42a6b6ed7",
-    "submittedAt": "2026-10-14T19:05:22Z"
+    "submittedAt": "2026-10-14T19:05:22Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Apply the deep-link focus only once**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Resolve Drone Maps from the clicked building**"
+    ]
    },
    {
     "commitId": "e0b278b35ebbf2b08e1277b70ec8d6ad094686dc",
-    "submittedAt": "2026-10-14T19:13:09Z"
+    "submittedAt": "2026-10-14T19:13:09Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Expose every photo in a maximum-zoom cluster**"
+    ]
+   }
+  ],
+  "reactions": []
+ },
+ "614": {
+  "comments": [
+   {
+    "createdAt": "2026-10-22T22:10:55Z",
+    "body": "<!-- codex-pull-request-review-summary -->\n| Review | Status | Commit | Review trigger |\n| --- | --- | --- | --- |\n| 📝 **Code Review** | ✅ **Completed** <relative-time datetime=\"2026-10-22T22:16:43.568885Z\">2026-10-22T22:16:43.568885Z</relative-time> | `33e4d67` | Manual request |"
+   }
+  ],
+  "reviews": [
+   {
+    "commitId": "938aa6d98ded9d77752dc0d8cad714fb09cd2cb7",
+    "submittedAt": "2026-10-22T22:10:52Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Include line calls when discovering active sites**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Return staff members with zero activity**"
+    ]
+   },
+   {
+    "commitId": "33e4d676f57f98aa699e6535ddce185ae0b8d8cf",
+    "submittedAt": "2026-10-22T22:16:41Z",
+    "findings": [
+     "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Preserve site identity when attributing line calls**"
+    ]
+   }
+  ],
+  "reactions": []
+ },
+ "616": {
+  "comments": [
+   {
+    "createdAt": "2026-10-23T01:14:38Z",
+    "body": "<!-- codex-pull-request-review-summary -->\n| Review | Status | Commit | Review trigger |\n| --- | --- | --- | --- |\n| 📝 **Code Review** | ✅ **Completed** <relative-time datetime=\"2026-10-23T01:57:33.438142Z\">2026-10-23T01:57:33.438142Z</relative-time> | `123cc25` | Manual request |"
+   }
+  ],
+  "reviews": [
+   {
+    "commitId": "8b9fcadb89bed809362217ac9bd9b0f1e0147a02",
+    "submittedAt": "2026-10-23T01:18:01Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Show free RoofCare visits as covered in the billing card**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Label active free RoofCare visits instead of showing a dash**"
+    ]
+   },
+   {
+    "commitId": "123cc25fca46213a47c72a65bcf4bd10d5f039e0",
+    "submittedAt": "2026-10-23T01:57:31Z",
+    "findings": [
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Keep after-visit work out of Net 30 labels**",
+     "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Show RoofCare coverage in field billing**"
+    ]
    }
   ],
   "reactions": []
