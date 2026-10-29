@@ -219,8 +219,10 @@ jobs:
           vercel "v10/projects/$PROJECT/env?upsert=true" "$(jq -nc --arg sha "$SHA" --arg branch "$BRANCH" \
             '{key: "REVIEW_GATE_SHA", value: $sha, type: "plain", target: ["preview"], gitBranch: $branch}')"
           # forceNew: the push already made a (skipped) deployment of this commit,
-          # and Vercel would otherwise hand that one back.
-          vercel "v13/deployments?forceNew=1&skipAutoDetectionConfirmation=1" "$(jq -nc \
+          # and Vercel would otherwise hand that one back. withCache: forceNew
+          # alone also drops the build cache, so the build would reinstall every
+          # package (what `vercel --force --with-cache` sends).
+          vercel "v13/deployments?forceNew=1&withCache=1&skipAutoDetectionConfirmation=1" "$(jq -nc \
             --arg project "$PROJECT" --arg branch "$BRANCH" --arg sha "$SHA" --argjson repo "$REPO_ID" \
             '{name: $project, project: $project, gitSource: {type: "github", repoId: $repo, ref: $branch, sha: $sha}}')"
           echo "Vercel preview of ${SHA::7} started."
