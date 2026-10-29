@@ -75,12 +75,15 @@ on:
 env:
   CONTEXT: Review gate
 
+# Every job runs on ubuntu-slim, GitHub's 1-vCPU runner. They take seconds, but
+# GitHub bills each as a full minute, and a slim minute costs a third of an
+# ubuntu-latest one. Slim ends any job at 15 minutes; these time out sooner.
 jobs:
   waiting:
     if: |
       github.event_name == 'pull_request' && github.event.action != 'closed' &&
       !contains(github.event.pull_request.labels.*.name, 'review:clean')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 5
     permissions:
       statuses: write
@@ -104,7 +107,7 @@ jobs:
       (github.event_name == 'pull_request' &&
         (github.event.action == 'synchronize' || github.event.action == 'reopened') &&
         contains(github.event.pull_request.labels.*.name, 'review:clean'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 10
     concurrency:
       group: review-gate-${{ github.event.issue.number || github.event.inputs.pr || github.event.pull_request.number }}
@@ -216,8 +219,10 @@ jobs:
           vercel "v10/projects/$PROJECT/env?upsert=true" "$(jq -nc --arg sha "$SHA" --arg branch "$BRANCH" \
             '{key: "REVIEW_GATE_SHA", value: $sha, type: "plain", target: ["preview"], gitBranch: $branch}')"
           # forceNew: the push already made a (skipped) deployment of this commit,
-          # and Vercel would otherwise hand that one back.
-          vercel "v13/deployments?forceNew=1&skipAutoDetectionConfirmation=1" "$(jq -nc \
+          # and Vercel would otherwise hand that one back. withCache: forceNew
+          # alone also drops the build cache, so the build would reinstall every
+          # package (what `vercel --force --with-cache` sends).
+          vercel "v13/deployments?forceNew=1&withCache=1&skipAutoDetectionConfirmation=1" "$(jq -nc \
             --arg project "$PROJECT" --arg branch "$BRANCH" --arg sha "$SHA" --argjson repo "$REPO_ID" \
             '{name: $project, project: $project, gitSource: {type: "github", repoId: $repo, ref: $branch, sha: $sha}}')"
           echo "Vercel preview of ${SHA::7} started."
@@ -246,7 +251,7 @@ jobs:
 
   forget:
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && inputs.vercel-project-id != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 5
     permissions: {}
     env:
