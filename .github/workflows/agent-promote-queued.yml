@@ -20,7 +20,9 @@ jobs:
   promote:
     # Wontfix closes do not unblock anything in a meaningful sense.
     if: github.event.issue.state_reason != 'not_planned'
-    runs-on: ubuntu-latest
+    # A few seconds of gh and jq, billed as a full minute: on ubuntu-slim that
+    # minute costs a third. Slim ends any job at 15 minutes.
+    runs-on: ubuntu-slim
     timeout-minutes: 5
     permissions:
       issues: write
