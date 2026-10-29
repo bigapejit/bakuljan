@@ -1,0 +1,63 @@
+name: EAS budget
+
+# Not reusable: it runs here, for the Expo account every connected repo builds
+# on. Expo has no spending limit, so this is ours. Every ten minutes it reads
+# the account's spend and recent builds (sandcastle/eas-budget). Builds stop
+# when the billing period would pass EAS_MONTHLY_BUDGET_USD, or when one
+# project starts more than EAS_DAILY_BUILDS_PER_PROJECT builds in a day. While
+# they're stopped:
+#
+# - An open `eas-cap` issue here, mentioning EAS_CAP_NOTIFY, says why and how
+#   builds start again. It's the only message; nothing is sent while builds run.
+# - Each run cancels every queued or running build on the account.
+# - The kit's eas-cap action (.github/actions/eas-cap) fails CI before
+#   `eas build`.
+#
+# Set up in this repo (Settings → Secrets and variables → Actions):
+#
+# - Secret EXPO_TOKEN: a token for a robot with the Admin role on the account.
+#   Usage figures need Admin; Developer can't read them.
+# - Variables EAS_ACCOUNT, EAS_MONTHLY_BUDGET_USD (the plan included, so 19 on
+#   Starter allows no overage at all), EAS_CAP_NOTIFY (a GitHub login), and
+#   optionally EAS_DAILY_BUILDS_PER_PROJECT (10 if unset).
+#
+# This repo is public, so the runs cost no Actions minutes. GitHub turns off a
+# public repo's schedules after 60 days without a commit; Actions →
+# EAS budget → Enable workflow turns it back on.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: eas-budget
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EAS_ACCOUNT: ${{ vars.EAS_ACCOUNT }}
+      EAS_MONTHLY_BUDGET_USD: ${{ vars.EAS_MONTHLY_BUDGET_USD }}
+      EAS_DAILY_BUILDS_PER_PROJECT: ${{ vars.EAS_DAILY_BUILDS_PER_PROJECT }}
+      EAS_CAP_NOTIFY: ${{ vars.EAS_CAP_NOTIFY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: sandcastle/eas-budget
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Stop EAS builds past the budget or in a loop
+        run: node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON sandcastle/eas-budget/eas-budget.ts
