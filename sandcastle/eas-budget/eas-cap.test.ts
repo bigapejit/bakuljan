@@ -11,7 +11,7 @@ function facts(over: Partial<EasFacts> = {}): EasFacts {
 }
 
 function builds(app: string, n: number, at = "2026-10-29T11:00:00Z") {
-  return Array.from({ length: n }, () => ({ app, createdAt: at }));
+  return Array.from({ length: n }, () => ({ app, createdAt: at, active: false }));
 }
 
 describe("easCap", () => {
@@ -23,6 +23,15 @@ describe("easCap", () => {
     const cap = easCap(facts({ creditUsedCents: 4200 }), limits, now);
     expect(cap.kind).toBe("budget");
     expect(cap.reason).toContain("$3 of build credit left");
+  });
+
+  it("counts builds still running against the credit they will use", () => {
+    // $8 of credit left covers one running build and the next, but not two running.
+    const running = (n: number) => builds("frsg", n).map((b) => ({ ...b, active: true }));
+    expect(easCap(facts({ creditUsedCents: 3700, builds: running(1) }), limits, now).kind).toBe("ok");
+    const cap = easCap(facts({ creditUsedCents: 3700, builds: running(2) }), limits, now);
+    expect(cap.kind).toBe("budget");
+    expect(cap.reason).toContain("$8 of build credit left, 2 builds still running");
   });
 
   it("stops builds once usage charges pass the budget", () => {

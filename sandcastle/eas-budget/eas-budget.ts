@@ -45,7 +45,6 @@ const data = await expo<{
         builds: { totalCost: number; planMetrics: { serviceMetric: string; value: number; limit: number }[] };
         updates: { totalCost: number };
       };
-      activityTimelineProjectActivities: Partial<Build>[];
     };
   };
 }>(
@@ -61,9 +60,6 @@ const data = await expo<{
           }
           updates: byBillingPeriod(date: $now, service: UPDATES) { totalCost }
         }
-        activityTimelineProjectActivities(limit: 100, filterTypes: [BUILD]) {
-          ... on Build { id status platform createdAt app { slug } }
-        }
       }
     }
   }`,
@@ -71,7 +67,7 @@ const data = await expo<{
 );
 const acct = data.account.byName;
 const credit = acct.usageMetrics.builds.planMetrics.find((m) => m.serviceMetric === "BUILDS");
-const builds = acct.activityTimelineProjectActivities.filter((b): b is Build => !!b.id);
+const builds = await recentBuilds();
 
 let open = issues("open")[0];
 const lastLifted = issues("closed")
@@ -84,7 +80,7 @@ const cap = easCap(
     overageCents: acct.usageMetrics.builds.totalCost + acct.usageMetrics.updates.totalCost,
     creditCents: credit?.limit ?? 0,
     creditUsedCents: credit?.value ?? 0,
-    builds: builds.map((b) => ({ app: b.app.slug, createdAt: b.createdAt })),
+    builds: builds.map((b) => ({ app: b.app.slug, createdAt: b.createdAt, active: ACTIVE.has(b.status) })),
   },
   limits,
   now,
@@ -108,6 +104,34 @@ if (open) {
   }
   if (cancelled.length) comment(open.number, `Cancelled ${cancelled.length}:\n\n${cancelled.join("\n")}`);
   console.log(`#${open.number} is open: cancelled ${cancelled.length} build(s)`);
+}
+
+// Every build from the last day, the window the daily limit counts and the
+// cancelling has to reach: an EAS build times out long before a day is up.
+async function recentBuilds(): Promise<Build[]> {
+  const since = now.getTime() - 24 * 60 * 60 * 1000;
+  const all: Build[] = [];
+  let before: string | undefined;
+  for (;;) {
+    const page = (
+      await expo<{ account: { byName: { activityTimelineProjectActivities: Partial<Build>[] } } }>(
+        `query EasBuilds($account: String!, $before: DateTime) {
+          account {
+            byName(accountName: $account) {
+              activityTimelineProjectActivities(limit: 100, createdBefore: $before, filterTypes: [BUILD]) {
+                ... on Build { id status platform createdAt app { slug } }
+              }
+            }
+          }
+        }`,
+        { account, before },
+      )
+    ).account.byName.activityTimelineProjectActivities.filter((b): b is Build => !!b.id);
+    all.push(...page);
+    const oldest = page.at(-1)?.createdAt;
+    if (page.length < 100 || !oldest || Date.parse(oldest) < since) return all;
+    before = oldest;
+  }
 }
 
 function openIssue(cap: EasCap, periodEnd: string): Issue {
