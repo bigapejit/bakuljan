@@ -1,0 +1,19 @@
+name: EAS cap
+description: >-
+  Fails while the kit's EAS budget workflow has builds stopped (an open eas-cap
+  issue in bigapejit/bakuljan). Put it right before any `eas build` step, so a
+  stopped build never starts, rather than being cancelled once it has.
+
+runs:
+  using: composite
+  steps:
+    - name: Check that EAS builds aren't stopped
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        url=$(gh api "repos/bigapejit/bakuljan/issues?labels=eas-cap&state=open&per_page=1" --jq '.[0].html_url // ""')
+        if [ -n "$url" ]; then
+          echo "::error::EAS builds are stopped, so this one didn't start. Why, and how to start them again: $url"
+          exit 1
+        fi
