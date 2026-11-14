@@ -99,7 +99,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ inputs.package-manager }}
+          # A self-hosted runner keeps its package manager's download cache on
+          # its own disk between jobs; fetching GitHub's copy would only add a
+          # download of the same files.
+          cache: ${{ runner.environment == 'github-hosted' && inputs.package-manager || '' }}
 
       - name: Setup pnpm
         if: inputs.package-manager == 'pnpm'
@@ -134,14 +137,36 @@ jobs:
       # silently and with a green check.
       - name: Cache node_modules
         id: node-modules
+        if: runner.environment == 'github-hosted'
         uses: actions/cache@v4
         with:
           path: ${{ steps.node-modules-paths.outputs.paths }}
           key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'patches/**') }}
 
+      # A self-hosted runner installs from its own disk (its download cache
+      # stays there between jobs) and only asks whether the store already
+      # holds this lockfile's tree, without downloading it. The callers'
+      # GitHub-hosted jobs still read the store, so when the tree is missing
+      # this runner uploads it once, as the GitHub-hosted path above would.
+      - name: Look up node_modules in the cache store
+        id: node-modules-lookup
+        if: runner.environment != 'github-hosted'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.node-modules-paths.outputs.paths }}
+          key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'patches/**') }}
+          lookup-only: true
+
       - name: Install dependencies
         if: steps.node-modules.outputs.cache-hit != 'true'
         run: $PM_CI
+
+      - name: Save node_modules for GitHub's runners
+        if: runner.environment != 'github-hosted' && steps.node-modules-lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.node-modules-paths.outputs.paths }}
+          key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'patches/**') }}
 
       - name: Use the project eas-cli
         run: echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"

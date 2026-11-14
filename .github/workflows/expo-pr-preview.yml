@@ -283,7 +283,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ inputs.package-manager }}
+          # A self-hosted runner keeps its package manager's download cache on
+          # its own disk between jobs; fetching GitHub's copy would only add a
+          # download of the same files.
+          cache: ${{ runner.environment == 'github-hosted' && inputs.package-manager || '' }}
 
       - name: Setup pnpm
         if: steps.scope.outputs.publish == 'true' && inputs.package-manager == 'pnpm'
@@ -319,9 +322,14 @@ jobs:
       # misses on purpose and installs from the package manager's download cache
       # as before. All three lockfile names are hashed so the key does not have
       # to know which package manager the caller uses; only one of them exists.
+      #
+      # GitHub's machines only. A self-hosted runner installs from its own
+      # disk instead: the package manager's cache stays there between jobs,
+      # so an install is quicker than downloading this tree, which is
+      # hundreds of megabytes over the runner's own internet connection.
       - name: Restore node_modules
         id: node-modules
-        if: steps.scope.outputs.publish == 'true'
+        if: steps.scope.outputs.publish == 'true' && runner.environment == 'github-hosted'
         uses: actions/cache/restore@v4
         with:
           path: ${{ steps.node-modules-paths.outputs.paths }}
