@@ -24,6 +24,17 @@ name: Warm CI caches
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: >-
+          Runner label for the job. GitHub's ubuntu-latest unless the caller
+          names its own machine, usually from a repository variable so one
+          setting moves the job back (pass `vars.BUILD_RUNNER || 'ubuntu-latest'`
+          in an expression). A self-hosted
+          runner needs Node's usual Linux toolchain plus zstd: actions/cache
+          versions a cache by its compression, so a runner without zstd never
+          sees the caches GitHub's runners wrote.
+        type: string
+        default: ubuntu-latest
       package-manager:
         description: "npm, pnpm, or yarn. Decides the install command and the setup-node cache."
         type: string
@@ -48,7 +59,7 @@ on:
 jobs:
   warm:
     name: Warm node_modules and Metro caches
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     # Only the newest default-branch commit matters; a queued warm from three
     # merges ago would save a cache the next one immediately supersedes.
     concurrency:

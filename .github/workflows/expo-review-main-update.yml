@@ -10,6 +10,17 @@ name: Expo Review Main Update
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: >-
+          Runner label for the job. GitHub's ubuntu-latest unless the caller
+          names its own machine, usually from a repository variable so one
+          setting moves the job back (pass `vars.BUILD_RUNNER || 'ubuntu-latest'`
+          in an expression). A self-hosted
+          runner needs Node's usual Linux toolchain plus zstd: actions/cache
+          versions a cache by its compression, so a runner without zstd never
+          sees the caches GitHub's runners wrote.
+        type: string
+        default: ubuntu-latest
       package-manager:
         description: "npm, pnpm, or yarn. Decides the install command and the setup-node cache."
         type: string
@@ -38,7 +49,7 @@ on:
 jobs:
   update:
     name: Publish review-main update
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     permissions:
       contents: read
 

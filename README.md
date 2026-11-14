@@ -256,6 +256,11 @@ suppressed default token, which is the same silent stall by another route.
   writer and the two Expo workflows only restore. The cache keys are a cross-file
   contract: change one and change all three. Repositories that declare workspaces
   cache every `node_modules` tree; flat repositories retain the root-only cache.
+- **Any Linux runner.** The three Expo workflows take a `runs-on` input,
+  `ubuntu-latest` by default, so an app repo can send them to a self-hosted
+  runner and back with one repository variable. That runner needs zstd:
+  actions/cache versions a cache by its compression, so without zstd it misses
+  every cache GitHub's runners wrote.
 
 ## Credits
 
