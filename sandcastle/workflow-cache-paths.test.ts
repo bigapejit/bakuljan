@@ -47,3 +47,25 @@ describe("the node_modules cache contract", () => {
     }
   });
 });
+
+describe("a self-hosted runner", () => {
+  // It installs from its own disk. node_modules is hundreds of megabytes,
+  // which on a home connection costs more than the install it would save.
+  it.each(workflows)("never downloads node_modules or the package cache in $path", ({ source }) => {
+    expect(source).toContain(
+      "cache: ${{ runner.environment == 'github-hosted' && inputs.package-manager || '' }}",
+    );
+    const nodeModulesDownload = source.match(
+      /- name: (Restore|Cache) node_modules\n {8}id: node-modules\n {8}if: (.+)\n/,
+    );
+    expect(nodeModulesDownload?.[2]).toContain("runner.environment == 'github-hosted'");
+  });
+
+  it("only looks the tree up when warming, and uploads it when GitHub's store lacks it", () => {
+    const warm = fs.readFileSync(path.resolve(".github/workflows/warm-caches.yml"), "utf8");
+    expect(warm).toContain("lookup-only: true");
+    expect(warm).toContain(
+      "if: runner.environment != 'github-hosted' && steps.node-modules-lookup.outputs.cache-hit != 'true'",
+    );
+  });
+});

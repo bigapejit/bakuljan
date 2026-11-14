@@ -258,9 +258,13 @@ suppressed default token, which is the same silent stall by another route.
   cache every `node_modules` tree; flat repositories retain the root-only cache.
 - **Any Linux runner.** The three Expo workflows take a `runs-on` input,
   `ubuntu-latest` by default, so an app repo can send them to a self-hosted
-  runner and back with one repository variable. That runner needs zstd:
-  actions/cache versions a cache by its compression, so without zstd it misses
-  every cache GitHub's runners wrote.
+  runner and back with one repository variable. A self-hosted runner installs
+  `node_modules` from its own disk and never downloads the tree, which is
+  hundreds of megabytes over its own internet connection. `warm-caches` there
+  only looks the tree up, and uploads it once when the lockfile changes, for
+  the caller's jobs still on GitHub. The small Metro cache travels as before,
+  which needs zstd on the runner: actions/cache versions a cache by its
+  compression.
 
 ## Credits
 
